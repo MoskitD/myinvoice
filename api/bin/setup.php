@@ -54,6 +54,7 @@ use MyInvoice\Bootstrap;
 use MyInvoice\Infrastructure\Config\Config;
 use MyInvoice\Infrastructure\Database\Connection;
 use MyInvoice\Service\Ares\AresClient;
+use MyInvoice\Service\Auth\PasswordHasher;
 use Monolog\Logger;
 
 // === Krok 2: načti config ===
@@ -63,6 +64,7 @@ try {
     echo "\n❌  Chyba při načítání cfg.php: " . $e->getMessage() . "\n";
     exit(1);
 }
+$hasher = new PasswordHasher($config);
 
 // === Krok 3: DB připojení ===
 echo "\n🔌  Testuji připojení k DB…\n";
@@ -150,8 +152,13 @@ echo "================================================\n";
 $adminName  = prompt('Jméno admina', '');
 $adminEmail = prompt('Email admina', '');
 $adminPass  = promptPassword('Heslo (min. 12 znaků): ');
-while (strlen($adminPass) < 12) {
-    echo "    ⚠  Heslo musí mít alespoň 12 znaků.\n";
+while (true) {
+    try {
+        $hasher->validate($adminPass);
+        break;
+    } catch (\InvalidArgumentException $e) {
+        echo "    ⚠  " . $e->getMessage() . "\n";
+    }
     $adminPass = promptPassword('Heslo: ');
 }
 
@@ -232,7 +239,7 @@ try {
          VALUES (?, ?, ?, "admin", "cs", 1)'
     )->execute([
         $adminEmail,
-        password_hash($adminPass, PASSWORD_BCRYPT),
+        $hasher->hash($adminPass),
         $adminName,
     ]);
 

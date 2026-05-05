@@ -53,12 +53,12 @@ if [[ ! -f cfg.docker.php ]]; then
   cp cfg.sample.php cfg.docker.php
   # In-place tweaks: Docker hostnames + generated secrets.
   # cfg.sample.php has TWO `'host' => '127.0.0.1',` lines (db block then redis block);
-  # we use GNU sed's `0,/pat/` range to replace just the first occurrence per pass.
-  # (sed -i requires GNU sed; macOS users: install via `brew install gnu-sed`.)
+  # replace the first occurrence, then the first remaining occurrence. The `1,/pat/`
+  # range works with both GNU sed and BSD/macOS sed.
   APP_URL="http://localhost:${APP_PORT}"
   sed -i.bak \
-      -e "0,/'host'    => '127\.0\.0\.1',/s|'host'    => '127\.0\.0\.1',|'host'    => 'db',|" \
-      -e "0,/'host'    => '127\.0\.0\.1',/s|'host'    => '127\.0\.0\.1',|'host'    => 'redis',|" \
+      -e "1,/'host'    => '127\.0\.0\.1',/s|'host'    => '127\.0\.0\.1',|'host'    => 'db',|" \
+      -e "1,/'host'    => '127\.0\.0\.1',/s|'host'    => '127\.0\.0\.1',|'host'    => 'redis',|" \
       -e "s|'name'    => 'myinvoice',|'name'    => '${DB_NAME}',|" \
       -e "s|'user'    => 'root',|'user'    => '${DB_USER}',|" \
       -e "s|'pass'    => 'CHANGE-ME',|'pass'    => '${DB_PASSWORD}',|" \
@@ -75,7 +75,15 @@ if [[ ! -f cfg.docker.php ]]; then
   echo "    !!  Edit cfg.docker.php to fill in SMTP, Cloudflare Turnstile, IP allowlist  !!"
   echo ""
 else
-  echo "==> cfg.docker.php already exists (skipping)"
+  echo "==> cfg.docker.php already exists (checking Docker hostnames)"
+  if grep -q "'host'    => '127.0.0.1'," cfg.docker.php; then
+    sed -i.bak \
+        -e "1,/'host'    => '127\.0\.0\.1',/s|'host'    => '127\.0\.0\.1',|'host'    => 'db',|" \
+        -e "1,/'host'    => '127\.0\.0\.1',/s|'host'    => '127\.0\.0\.1',|'host'    => 'redis',|" \
+        cfg.docker.php
+    rm -f cfg.docker.php.bak
+    echo "    cfg.docker.php hostnames updated for Docker"
+  fi
 fi
 
 # --- 3. build --------------------------------------------------------------

@@ -83,7 +83,14 @@ if (-not (Test-Path cfg.docker.php)) {
     Write-Host "    !!  Edit cfg.docker.php to fill in SMTP, Cloudflare Turnstile, IP allowlist  !!" -ForegroundColor Yellow
     Write-Host ""
 } else {
-    Write-Host "==> cfg.docker.php already exists (skipping)"
+    Write-Host "==> cfg.docker.php already exists (checking Docker hostnames)"
+    $cfg = Get-Content cfg.docker.php -Raw
+    if ($cfg -match "'host'    => '127\.0\.0\.1',") {
+        $cfg = [regex]::Replace($cfg, "'host'    => '127\.0\.0\.1',", "'host'    => 'db',",    1)
+        $cfg = [regex]::Replace($cfg, "'host'    => '127\.0\.0\.1',", "'host'    => 'redis',", 1)
+        Set-Content -Encoding UTF8 -NoNewline cfg.docker.php -Value $cfg
+        Write-Host "    cfg.docker.php hostnames updated for Docker"
+    }
 }
 
 # --- 3. build --------------------------------------------------------------

@@ -7,5 +7,5 @@
 SET NAMES utf8mb4;
 
 ALTER TABLE clients
-  ADD COLUMN auto_send_reminders TINYINT(1) NOT NULL DEFAULT 1
+  ADD COLUMN IF NOT EXISTS auto_send_reminders TINYINT(1) NOT NULL DEFAULT 1
     AFTER reverse_charge;
