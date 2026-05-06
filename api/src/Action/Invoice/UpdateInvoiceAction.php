@@ -59,6 +59,12 @@ final class UpdateInvoiceAction
         // Type a parent_invoice_id se nemění při update
         $body['invoice_type']      = $existing['invoice_type'];
         $body['parent_invoice_id'] = $existing['parent_invoice_id'];
+        // Varsymbol lze měnit jen u draftu — vystavená faktura má číslo immutable
+        // (součást snapshotu pro účetní evidenci a PDF). Force=1 admin override
+        // ho neodemyká — pokud chce změnit číslo, musí vytvořit dobropis nebo storno.
+        if ($existing['status'] !== 'draft') {
+            unset($body['varsymbol']);
+        }
         try {
             $body = $this->defaults->resolve($body);
         } catch (\InvalidArgumentException $e) {

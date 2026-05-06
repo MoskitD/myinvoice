@@ -31,6 +31,13 @@ export interface Supplier {
   pohoda_centre_code: string | null
   pohoda_activity_code: string | null
   pohoda_contract_code: string | null
+  // Per-supplier konfigurace číslování faktur (migrace 0014).
+  // *_format — template typu 'JD{YYYY}-{CC}', null = fallback na cfg.varsymbol.templates.{type}.
+  // period — 'year' (1.1.) | 'month' (1. dne v měsíci) | 'none' (nikdy).
+  invoice_number_format: string | null
+  proforma_number_format: string | null
+  credit_note_number_format: string | null
+  invoice_number_period: 'year' | 'month' | 'none'
 }
 
 export interface CurrencyAccount {

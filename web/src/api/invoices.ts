@@ -186,6 +186,11 @@ export interface InvoicePayload {
   note_below_items?: string | null
   advance_paid_amount?: number
   exchange_rate?: number | null
+  // Volitelný ruční override čísla faktury (varsymbol). Prázdný řetězec / null =
+  // generuje se automaticky při issue dle supplier templatu (Settings → Číslování faktur)
+  // s fallbackem na cfg.varsymbol.templates. Backend ho akceptuje jen u draftu;
+  // po vystavení je číslo immutable (snapshot).
+  varsymbol?: string | null
   items: Array<{
     description: string
     quantity: number
@@ -258,6 +263,14 @@ export const invoicesApi = {
   },
 
   get:    (id: number) => api.get<Invoice>(`/invoices/${id}`).then(r => r.data),
+  /**
+   * Vrátí náhled, jaké číslo faktura dostane při Vystavení (BEZ inkrementu counteru).
+   * Používá se v editoru jako placeholder „automaticky: JD2026-01".
+   */
+  previewVarsymbol: (type: 'invoice' | 'proforma' | 'credit_note', issueDate: string) =>
+    api.get<{ varsymbol: string; has_template: boolean }>(
+      `/invoices/preview-varsymbol`, { params: { type, issue_date: issueDate } },
+    ).then(r => r.data),
   create: (payload: InvoicePayload) => api.post<Invoice>('/invoices', payload).then(r => r.data),
   update: (id: number, payload: InvoicePayload, force = false) =>
     api.put<Invoice>(`/invoices/${id}${force ? '?force=1' : ''}`, payload).then(r => r.data),

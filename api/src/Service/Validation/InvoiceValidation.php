@@ -66,6 +66,18 @@ final class InvoiceValidation
             $err['advance_paid_amount'][] = 'Záloha nesmí být záporná';
         }
 
+        // Volitelný manuální varsymbol u draftu (override automatického číslování).
+        // Prázdný / chybějící = generuje se při issue. Max 20 znaků (DB limit).
+        if (array_key_exists('varsymbol', $data) && $data['varsymbol'] !== null && $data['varsymbol'] !== '') {
+            $vs = (string) $data['varsymbol'];
+            if (strlen($vs) > 20) {
+                $err['varsymbol'][] = 'Číslo faktury má max 20 znaků';
+            }
+            if (preg_match('/[\x00-\x1f\x7f]/', $vs)) {
+                $err['varsymbol'][] = 'Číslo faktury obsahuje neplatné znaky';
+            }
+        }
+
         return $err;
     }
 

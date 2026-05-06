@@ -37,6 +37,7 @@ use MyInvoice\Action\Invoice\InvoiceActivityAction;
 use MyInvoice\Action\Invoice\GetInvoiceAction;
 use MyInvoice\Action\Invoice\IssueInvoiceAction;
 use MyInvoice\Action\Invoice\ListInvoicesAction;
+use MyInvoice\Action\Invoice\PreviewVarsymbolAction;
 use MyInvoice\Action\Invoice\MarkPaidAction;
 use MyInvoice\Action\Invoice\BulkReissueAction;
 use MyInvoice\Action\Invoice\CloneInvoiceAction;
@@ -132,6 +133,7 @@ final class Routes
         // Invoices (M3 — draft + editor + sumace; vystavení/odeslání/PDF přijde v M4)
         $app->get    ('/api/invoices',              ListInvoicesAction::class);
         $app->get    ('/api/invoices/export.csv',   ExportCsvAction::class);
+        $app->get    ('/api/invoices/preview-varsymbol', PreviewVarsymbolAction::class);
         $app->post   ('/api/invoices',              CreateInvoiceAction::class);
         $app->get    ('/api/invoices/{id:[0-9]+}',  GetInvoiceAction::class);
         $app->get    ('/api/invoices/{id:[0-9]+}/activity', InvoiceActivityAction::class);

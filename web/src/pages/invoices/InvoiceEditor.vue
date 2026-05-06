@@ -33,6 +33,10 @@ const error = ref('')
 const isForce = computed(() => route.query.force === '1')
 const editedStatus = ref<string>('draft')
 const editedVarsymbol = ref<string | null>(null)
+// Náhled čísla, které dostane faktura při Vystavení (pokud user nezadá ruční override).
+// Naplní se z API na změnu invoice_type / issue_date — per-supplier per-period live preview.
+const varsymbolAutoPreview = ref<string>('')
+const varsymbolAutoHasTemplate = ref<boolean>(true)
 
 const clients = ref<Client[]>([])
 const projects = ref<Project[]>([])
@@ -73,6 +77,7 @@ const form = ref<{
   note_below_items: string
   advance_paid_amount: number
   exchange_rate: number | null
+  varsymbol: string  // Ruční override čísla faktury (prázdný = generuje se při issue)
   items: InvoiceItem[]
 }>({
   invoice_type: 'invoice',
@@ -89,6 +94,7 @@ const form = ref<{
   note_below_items: '',
   advance_paid_amount: 0,
   exchange_rate: null,
+  varsymbol: '',
   items: [],
 })
 
@@ -156,6 +162,27 @@ watch(() => form.value.reverse_charge, (newVal, oldVal) => {
   if (loaded.value && newVal !== oldVal) syncItemsVatRateToReverseCharge()
 })
 
+// Náhled čísla faktury — backend zná aktuální counter pro per-supplier templ.
+// Volá se při mount + při změně typu / data; cancellation nemá číslo.
+async function loadVarsymbolPreview() {
+  if (form.value.invoice_type === ('cancellation' as never)) {
+    varsymbolAutoPreview.value = ''
+    varsymbolAutoHasTemplate.value = true
+    return
+  }
+  try {
+    const r = await invoicesApi.previewVarsymbol(form.value.invoice_type, form.value.issue_date)
+    varsymbolAutoPreview.value = r.varsymbol
+    varsymbolAutoHasTemplate.value = r.has_template
+  } catch {
+    varsymbolAutoPreview.value = ''
+    varsymbolAutoHasTemplate.value = false
+  }
+}
+watch(() => [form.value.invoice_type, form.value.issue_date], () => {
+  if (loaded.value && editedStatus.value === 'draft') loadVarsymbolPreview()
+})
+
 // Při přepnutí typu na credit_note převrať množství všech existujících položek na záporná.
 watch(() => form.value.invoice_type, (newType, oldType) => {
   if (newType === 'credit_note' && oldType !== 'credit_note') {
@@ -209,6 +236,7 @@ onMounted(async () => {
       advance_paid_amount: inv.advance_paid_amount,
       items: inv.items.map(i => ({ ...i })),
       exchange_rate: inv.exchange_rate ?? null,
+      varsymbol: inv.varsymbol ?? '',
     })
     loadedRate.value = (inv.exchange_rate && inv.currency !== 'CZK')
       ? { rate: inv.exchange_rate, date: (inv.exchange_rate_date ?? inv.issue_date).slice(0, 10), currency: inv.currency }
@@ -219,6 +247,7 @@ onMounted(async () => {
     }
     // Načti existující work_report (pokud existuje)
     await loadWorkReport()
+    if (editedStatus.value === 'draft') await loadVarsymbolPreview()
   } else {
     // New invoice — pre-select from query
     if (route.query.client_id) {
@@ -237,6 +266,7 @@ onMounted(async () => {
     if (form.value.items.length === 0) {
       form.value.items = [blankItem()]
     }
+    await loadVarsymbolPreview()
   }
 
   loaded.value = true
@@ -582,6 +612,9 @@ async function submit() {
       // explicit hodnotu jako manuální override (nepřepočítá z ČNB).
       exchange_rate: (form.value.currency !== 'CZK' && form.value.exchange_rate && form.value.exchange_rate > 0)
         ? form.value.exchange_rate : undefined,
+      // Volitelný ruční varsymbol — backend ho akceptuje jen u draftu;
+      // prázdný řetězec → backend uloží NULL a vygeneruje při issue automaticky.
+      varsymbol: form.value.varsymbol.trim(),
       items: form.value.items.map((it, i) => ({
         description: it.description,
         quantity: it.quantity,
@@ -769,6 +802,23 @@ async function deleteDraft() {
         <div class="bg-white border border-neutral-200 rounded-lg p-5 shadow-sm">
           <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500 mb-3">{{ t('invoice.dates_section') }}</h3>
           <div class="space-y-3">
+            <!-- Ruční override čísla faktury — jen u draftu; prázdné = vygeneruje se při Vystavení.
+                 Placeholder ukazuje, jaké číslo dostane fakturu při Issue (z preview API).
+                 Když není žádný template (ani per-supplier ani v cfg), ukáže warning. -->
+            <div v-if="editedStatus === 'draft'">
+              <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('invoice.varsymbol_label') }}</label>
+              <input v-model="form.varsymbol" type="text" maxlength="20"
+                :placeholder="varsymbolAutoPreview || t('invoice.varsymbol_placeholder')"
+                class="w-full h-10 px-3 border border-neutral-300 rounded-md font-mono" />
+              <p v-if="!form.varsymbol && !varsymbolAutoHasTemplate" class="text-xs text-warning-600 mt-1">
+                {{ t('invoice.varsymbol_no_template') }}
+              </p>
+              <p v-else class="text-xs text-neutral-500 mt-1">{{ t('invoice.varsymbol_hint') }}</p>
+            </div>
+            <div v-else-if="editedVarsymbol" class="rounded-md bg-neutral-50 border border-neutral-200 p-3 text-sm">
+              <span class="text-neutral-500">{{ t('invoice.varsymbol_label') }}:</span>
+              <code class="ml-2 font-mono font-semibold">{{ editedVarsymbol }}</code>
+            </div>
             <div>
               <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('invoice.issue_date') }} *</label>
               <input v-model="form.issue_date" type="date" required class="w-full h-10 px-3 border border-neutral-300 rounded-md" />

@@ -177,7 +177,33 @@ final class SettingsAction
             'default_currency_id', 'default_vat_rate_id', 'default_payment_due_days',
             'default_hourly_rate', 'auto_send_reminders', 'logo_path', 'signature_path',
             'pohoda_account_code', 'pohoda_centre_code', 'pohoda_activity_code', 'pohoda_contract_code',
+            // Per-supplier konfigurace číslování faktur (migrace 0014)
+            'invoice_number_format', 'proforma_number_format', 'credit_note_number_format',
+            'invoice_number_period',
         ];
+        // Validace per-supplier varsymbol templatů: prázdný string → NULL (= fallback na cfg);
+        // jinak max 60 znaků a musí obsahovat alespoň jeden counter placeholder {C+}.
+        foreach (['invoice_number_format', 'proforma_number_format', 'credit_note_number_format'] as $f) {
+            if (array_key_exists($f, $body)) {
+                $v = trim((string) ($body[$f] ?? ''));
+                if ($v === '') {
+                    $body[$f] = null;
+                } else {
+                    if (strlen($v) > 60) {
+                        return Json::error($response, 'validation_failed', "Pole '$f' má max 60 znaků.", 400);
+                    }
+                    if (!preg_match('/\{C+\}/', $v)) {
+                        return Json::error($response, 'validation_failed', "Pole '$f' musí obsahovat counter placeholder, např. {CCC}.", 400);
+                    }
+                    $body[$f] = $v;
+                }
+            }
+        }
+        if (array_key_exists('invoice_number_period', $body)
+            && !in_array($body['invoice_number_period'], ['year', 'month', 'none'], true)
+        ) {
+            return Json::error($response, 'validation_failed', "Neplatné invoice_number_period (year|month|none).", 400);
+        }
         // Legacy: pokud frontend pošle 'default_currency' jako code, převedeme na id (scoped to supplier)
         if (isset($body['default_currency']) && !isset($body['default_currency_id'])) {
             $stmt = $this->db->pdo()->prepare(

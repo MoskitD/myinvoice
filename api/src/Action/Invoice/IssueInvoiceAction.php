@@ -76,10 +76,29 @@ final class IssueInvoiceAction
 
         $supplierId = (int) $invoice['supplier_id'];
 
-        try {
-            $varsymbol = $this->varsymbol->next($supplierId, $invoice['invoice_type'], $issueDate);
-        } catch (\InvalidArgumentException $e) {
-            return Json::error($response, 'varsymbol_failed', $e->getMessage(), 500);
+        // Pokud byl draft ručně očíslován (varsymbol zadaný v editoru), respektuj override
+        // a NEinkremenetuj counter. Jen ověříme unikátnost v rámci supplier scope.
+        $manualVarsymbol = trim((string) ($invoice['varsymbol'] ?? ''));
+        if ($manualVarsymbol !== '') {
+            $dup = $this->db->pdo()->prepare(
+                'SELECT id FROM invoices WHERE supplier_id = ? AND varsymbol = ? AND id != ? LIMIT 1'
+            );
+            $dup->execute([$supplierId, $manualVarsymbol, $id]);
+            if ($dup->fetchColumn()) {
+                return Json::error(
+                    $response,
+                    'varsymbol_duplicate',
+                    "Číslo '{$manualVarsymbol}' už existuje u jiné faktury tohoto dodavatele.",
+                    409,
+                );
+            }
+            $varsymbol = $manualVarsymbol;
+        } else {
+            try {
+                $varsymbol = $this->varsymbol->next($supplierId, $invoice['invoice_type'], $issueDate);
+            } catch (\InvalidArgumentException $e) {
+                return Json::error($response, 'varsymbol_failed', $e->getMessage(), 500);
+            }
         }
 
         try {

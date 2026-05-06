@@ -321,12 +321,21 @@ final class InvoiceRepository
             throw new \InvalidArgumentException("Client #$clientId nenalezen.");
         }
 
+        // Volitelný ručně zadaný varsymbol (override automatického číslování při issue).
+        // Trim + null-if-empty, max 20 znaků (DB sloupec varsymbol VARCHAR(20)).
+        $manualVarsymbol = trim((string) ($data['varsymbol'] ?? ''));
+        if ($manualVarsymbol === '') {
+            $manualVarsymbol = null;
+        } elseif (strlen($manualVarsymbol) > 20) {
+            throw new \InvalidArgumentException('varsymbol má max 20 znaků');
+        }
+
         $sql = 'INSERT INTO invoices
             (invoice_type, parent_invoice_id, client_id, project_id, supplier_id,
              issue_date, tax_date, due_date, currency_id, reverse_charge, language,
-             note_above_items, note_below_items, advance_paid_amount,
+             note_above_items, note_below_items, advance_paid_amount, varsymbol,
              status, created_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "draft", ?)';
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "draft", ?)';
 
         $stmt = $pdo->prepare($sql);
         $stmt->execute([
@@ -344,6 +353,7 @@ final class InvoiceRepository
             $data['note_above_items'] ?? null,
             $data['note_below_items'] ?? null,
             (float) ($data['advance_paid_amount'] ?? 0),
+            $manualVarsymbol,
             $userId,
         ]);
 
@@ -352,16 +362,29 @@ final class InvoiceRepository
 
     public function updateDraft(int $id, array $data): void
     {
+        // Varsymbol — měníme jen pokud je v payloadu klíč 'varsymbol' (allow null = vyčištění,
+        // missing = nepsát vůbec). UpdateInvoiceAction klíč u vystavené faktury odstraní.
+        $hasVarsymbol = array_key_exists('varsymbol', $data);
+        $manualVarsymbol = null;
+        if ($hasVarsymbol) {
+            $manualVarsymbol = trim((string) ($data['varsymbol'] ?? ''));
+            if ($manualVarsymbol === '') {
+                $manualVarsymbol = null;
+            } elseif (strlen($manualVarsymbol) > 20) {
+                throw new \InvalidArgumentException('varsymbol má max 20 znaků');
+            }
+        }
+
         $sql = 'UPDATE invoices SET
                 client_id = ?, project_id = ?,
                 issue_date = ?, tax_date = ?, due_date = ?,
                 currency_id = ?, reverse_charge = ?, language = ?,
                 note_above_items = ?, note_below_items = ?,
-                advance_paid_amount = ?
-              WHERE id = ?';
+                advance_paid_amount = ?'
+              . ($hasVarsymbol ? ', varsymbol = ?' : '')
+              . ' WHERE id = ?';
 
-        $stmt = $this->db->pdo()->prepare($sql);
-        $stmt->execute([
+        $params = [
             (int) $data['client_id'],
             isset($data['project_id']) && $data['project_id'] ? (int) $data['project_id'] : null,
             (string) $data['issue_date'],
@@ -373,8 +396,11 @@ final class InvoiceRepository
             $data['note_above_items'] ?? null,
             $data['note_below_items'] ?? null,
             (float) ($data['advance_paid_amount'] ?? 0),
-            $id,
-        ]);
+        ];
+        if ($hasVarsymbol) $params[] = $manualVarsymbol;
+        $params[] = $id;
+
+        $this->db->pdo()->prepare($sql)->execute($params);
     }
 
     public function delete(int $id): void
