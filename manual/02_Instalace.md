@@ -115,11 +115,37 @@ Skript `docker-install` postupně:
 4. Spustí stack: **app** (Apache:80 → host:8080) + **db** (MariaDB 11)
 5. Počká, až bude DB healthy, a spustí migrace
 
-### 2.1.3 Varianta C — bez klonování repa (jen Docker, manuálně)
+### 2.1.3 Varianta C — bez klonování repa (jen Docker)
 
-Pokud nechceš mít na hostiteli ani klon repa (typicky produkční Linux server,
-jen Docker daemon), stáhni si přes `curl` jen dva soubory a sestav konfiguraci
-ručně:
+Pokud nechceš mít na hostiteli klon repa (typicky produkční Linux server,
+jen Docker daemon), GHCR image obsahuje veškerý PHP/JS kód i migrace —
+z repa potřebuješ jen **3 malé soubory**.
+
+#### Varianta C1 — one-click přes `docker-ghcr.sh` (doporučeno)
+
+Stáhne si i instalační skript a chová se stejně jako Varianta A
+(random hesla, vygenerovaný `cfg.docker.php`, pull image, migrace):
+
+```bash
+mkdir myinvoice && cd myinvoice
+curl -O https://raw.githubusercontent.com/radekhulan/myinvoice/master/docker-compose.production.yml
+curl -O https://raw.githubusercontent.com/radekhulan/myinvoice/master/cfg.sample.php
+curl -O https://raw.githubusercontent.com/radekhulan/myinvoice/master/cmd/docker-ghcr.sh
+chmod +x docker-ghcr.sh
+./docker-ghcr.sh
+```
+
+Skript najde `docker-compose.production.yml` v aktuálním adresáři, takže
+nemusíš nic přejmenovávat. Update na novou verzi:
+
+```bash
+docker compose -f docker-compose.production.yml pull
+docker compose -f docker-compose.production.yml up -d
+```
+
+#### Varianta C2 — manuálně, bez skriptu
+
+Když chceš plnou kontrolu nad `cfg.docker.php` a `.env`:
 
 ```bash
 mkdir myinvoice && cd myinvoice
@@ -144,9 +170,8 @@ docker compose exec app php api/bin/migrate.php
 > kontejneru (`docker-entrypoint.sh`). Ruční `php api/bin/migrate.php` zůstává
 > bezpečný idempotentní fallback.
 
-> ⚠️ Tato varianta NEgeneruje hesla a secrets automaticky — musíš je do
-> `cfg.docker.php` doplnit ručně (viz komentář v ukázce). Pro one-click
-> ekvivalent použij **Variantu A** (vyžaduje klon repa).
+> ⚠️ Varianta C2 NEgeneruje hesla a secrets automaticky — musíš je do
+> `cfg.docker.php` doplnit ručně. Pro one-click bez klonu repa použij **C1**.
 
 > 📖 **Manuál na `/manual`:** GHCR image má od **v2.1.5** vygenerovaný HTML
 > manuál a od **v2.3.0** i PDF (`tools/generateManualHtml.php` +
