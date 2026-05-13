@@ -4,6 +4,7 @@ import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { clientsApi, type Client } from '@/api/clients'
 import { invoicesApi, type InvoiceListItem } from '@/api/invoices'
+import { recurringApi, type RecurringTemplate } from '@/api/recurring'
 import { formatMoney, formatDate, statusLabel, typeLabel, statusBadgeClass, isOverdue, invoiceRowClass } from '@/composables/useFormat'
 import MonthlyRevenueChart from '@/components/charts/MonthlyRevenueChart.vue'
 import { useToast } from '@/composables/useToast'
@@ -22,6 +23,7 @@ const invoicesLoadingMore = ref(false)
 const invoicesTotal = ref(0)
 const invoicesPage = ref(1)
 const invoicesPages = ref(1)
+const recurringTemplates = ref<RecurringTemplate[]>([])
 
 // Pro graf: primární měna = nejčastější v datech, fallback default
 const primaryCurrency = computed(() => {
@@ -53,18 +55,32 @@ async function load() {
   invoicesLoading.value = true
   invoicesPage.value = 1
   try {
-    const [c, grouped] = await Promise.all([
+    const [c, grouped, rec] = await Promise.all([
       clientsApi.get(id),
       invoicesApi.listGrouped({ client_id: id, page: 1 }),
+      recurringApi.list({ client_id: id }).catch(() => [] as RecurringTemplate[]),
     ])
     client.value = c
     invoices.value = grouped.data.flatMap(g => g.invoices)
     invoicesTotal.value = grouped.meta.total
     invoicesPages.value = grouped.meta.pages ?? 1
+    recurringTemplates.value = rec
   } finally {
     loading.value = false
     invoicesLoading.value = false
   }
+}
+
+function freqLabel(f: string): string {
+  return t(`recurring.frequency_${f}`)
+}
+
+function recurringStatusBadgeClass(s: string): string {
+  return {
+    active:  'bg-success-50 text-success-700 border-success-200',
+    paused:  'bg-warning-50 text-warning-700 border-warning-200',
+    expired: 'bg-neutral-100 text-neutral-500 border-neutral-200',
+  }[s] ?? 'bg-neutral-100 text-neutral-500'
 }
 
 async function loadMoreInvoices() {
@@ -402,18 +418,79 @@ async function deleteClient() {
     </div>
 
     <!-- Pravidelné fakturace -->
-    <div class="bg-white border border-neutral-200 rounded-lg shadow-sm">
+    <div class="bg-white border border-neutral-200 rounded-lg shadow-sm overflow-hidden">
       <div class="px-5 py-3 border-b border-neutral-200 flex items-center justify-between">
-        <h3 class="font-semibold">{{ t('recurring.title') }}</h3>
+        <h3 class="font-semibold">
+          {{ t('recurring.title') }}
+          <span v-if="recurringTemplates.length" class="text-neutral-400 font-normal">({{ recurringTemplates.length }})</span>
+        </h3>
         <RouterLink :to="`/recurring/new?client_id=${client.id}`"
           class="px-3 h-8 text-sm bg-primary-600 hover:bg-primary-700 text-white rounded-md inline-flex items-center">
           {{ t('recurring.new') }}
         </RouterLink>
       </div>
-      <div class="px-5 py-4 text-sm text-neutral-600">
-        <RouterLink :to="`/recurring?client_id=${client.id}`" class="text-primary-700 hover:underline">
-          {{ t('recurring.title') }} →
-        </RouterLink>
+
+      <div v-if="recurringTemplates.length === 0" class="px-5 py-6 text-sm text-neutral-500 text-center">
+        {{ t('recurring.empty') }}
+      </div>
+
+      <!-- Desktop -->
+      <div v-else class="hidden md:block overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="bg-neutral-50 text-neutral-500 text-xs uppercase tracking-wide">
+            <tr>
+              <th class="text-left px-4 py-2.5 font-medium">{{ t('recurring.name') }}</th>
+              <th class="text-left px-4 py-2.5 font-medium">{{ t('recurring.frequency') }}</th>
+              <th class="text-left px-4 py-2.5 font-medium">{{ t('recurring.next_run_date') }}</th>
+              <th class="text-left px-4 py-2.5 font-medium">Status</th>
+              <th class="text-right px-4 py-2.5 font-medium">{{ t('recurring.generated_invoices') }}</th>
+              <th class="px-4 py-2.5"></th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-neutral-100">
+            <tr v-for="tpl in recurringTemplates" :key="tpl.id"
+              @click="router.push({ name: 'recurring-detail', params: { id: tpl.id } })"
+              class="cursor-pointer hover:bg-neutral-50">
+              <td class="px-4 py-3 font-medium text-primary-700">{{ tpl.name }}</td>
+              <td class="px-4 py-3">{{ freqLabel(tpl.frequency) }}<span v-if="tpl.end_of_month" class="text-neutral-400"> · EOM</span></td>
+              <td class="px-4 py-3 font-mono text-xs">{{ formatDate(tpl.next_run_date) }}</td>
+              <td class="px-4 py-3">
+                <span class="text-xs px-2 py-0.5 rounded border" :class="recurringStatusBadgeClass(tpl.status)">
+                  {{ t('recurring.status.' + tpl.status) }}
+                </span>
+              </td>
+              <td class="px-4 py-3 text-right text-neutral-700">{{ tpl.invoices_generated_count ?? 0 }}</td>
+              <td class="px-4 py-3 text-right whitespace-nowrap">
+                <RouterLink :to="{ name: 'recurring-detail', params: { id: tpl.id } }" @click.stop
+                  class="cursor-pointer inline-flex items-center gap-1 px-2.5 h-7 text-xs border border-primary-500/40 text-primary-700 hover:bg-primary-50 rounded">
+                  <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                  {{ t('recurring.actions.detail') }}
+                </RouterLink>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Mobile -->
+      <div v-if="recurringTemplates.length" class="md:hidden divide-y divide-neutral-100">
+        <div v-for="tpl in recurringTemplates" :key="`m-${tpl.id}`"
+          @click="router.push({ name: 'recurring-detail', params: { id: tpl.id } })"
+          class="cursor-pointer hover:bg-neutral-50 px-4 py-3">
+          <div class="flex items-baseline justify-between gap-2">
+            <div class="font-medium text-neutral-900 truncate">{{ tpl.name }}</div>
+            <span class="text-xs px-2 py-0.5 rounded border whitespace-nowrap" :class="recurringStatusBadgeClass(tpl.status)">
+              {{ t('recurring.status.' + tpl.status) }}
+            </span>
+          </div>
+          <div class="flex items-baseline justify-between gap-2 mt-1 text-xs text-neutral-500">
+            <span>{{ freqLabel(tpl.frequency) }}<span v-if="tpl.end_of_month" class="text-neutral-400"> · EOM</span></span>
+            <span class="font-mono">{{ formatDate(tpl.next_run_date) }}</span>
+          </div>
+          <div class="text-xs text-neutral-500 mt-0.5">
+            {{ tpl.invoices_generated_count ?? 0 }} faktur
+          </div>
+        </div>
       </div>
     </div>
   </div>

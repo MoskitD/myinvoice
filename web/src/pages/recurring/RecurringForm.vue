@@ -156,6 +156,15 @@ onMounted(async () => {
       form.value.items.push(blankItem())
     }
 
+    // Pre-fill client_id from ?client_id=N (např. z ClientDetail "+ Nová šablona")
+    const queryClientId = Number(route.query.client_id)
+    if (!isEdit.value && queryClientId > 0) {
+      form.value.client_id = queryClientId
+      const c = clients.value.find(x => x.id === queryClientId)
+      if (c) form.value.name = c.company_name
+      await loadProjectsForClient(queryClientId)
+    }
+
     // Pre-fill from existing invoice (?from_invoice=ID)
     const fromInvoice = route.query.from_invoice
     if (!isEdit.value && fromInvoice) {
