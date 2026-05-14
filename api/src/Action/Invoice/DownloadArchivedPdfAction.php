@@ -51,6 +51,10 @@ final class DownloadArchivedPdfAction
 
         $download = !empty($request->getQueryParams()['download']);
         $filename = basename($path);
+        // Historické archive entries mohly skončit s `.archcopy-XXXXXXXX` suffixem
+        // za `.pdf` (legacy bug v PdfArchiveService::archiveCopy). Pro účely
+        // serve filename to odstraníme, aby Content-Disposition končil na .pdf.
+        $filename = preg_replace('/\.archcopy-[0-9a-f]+$/', '', $filename);
         // Defense-in-depth: filename pochází z DB (kontrolovaný formát), ale escapuj
         // CR/LF/" pro jistotu (header injection / Content-Disposition split).
         $safeFilename = preg_replace('/[\r\n"\\\\]/', '_', $filename);

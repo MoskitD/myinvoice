@@ -87,6 +87,9 @@ final class PdfArchiveService
         if (str_ends_with($origName, '.new')) {
             $origName = substr($origName, 0, -4);
         }
+        // Strip .archcopy-XXXXXXXX suffix z archiveCopy() tmp kopií,
+        // aby výsledný název končil na .pdf (jinak prohlížeč nepozná typ).
+        $origName = preg_replace('/\.archcopy-[0-9a-f]+$/', '', $origName);
         $archiveName = date('Ymd-His') . '-' . substr($sha256, 0, 8) . '-' . $origName;
         $archivePath = $archiveDir . '/' . $archiveName;
 
