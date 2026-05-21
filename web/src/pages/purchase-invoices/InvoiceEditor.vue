@@ -595,7 +595,7 @@ function fieldErr(key: string): string | null {
         <header class="flex items-center justify-between px-5 py-3 border-b border-neutral-100">
           <h2 class="text-sm font-medium text-neutral-700">{{ t('purchase_invoice.items.title') }}</h2>
           <button type="button" @click="addItem" class="cursor-pointer px-3 h-8 text-sm bg-primary-600 hover:bg-primary-700 text-white rounded-md font-medium">
-            + {{ t('purchase_invoice.items.add') }}
+            {{ t('purchase_invoice.items.add') }}
           </button>
         </header>
         <div v-if="form.items.length === 0" class="text-sm text-neutral-500 py-8 text-center">

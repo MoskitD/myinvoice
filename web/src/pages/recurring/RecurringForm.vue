@@ -600,7 +600,7 @@ async function submit() {
           <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500">{{ t('recurring.items') }}</h3>
           <button type="button" @click="addItem"
             class="cursor-pointer px-3 h-8 text-sm bg-primary-600 hover:bg-primary-700 text-white rounded-md font-medium">
-            + {{ t('invoice.add_item') }}
+            {{ t('invoice.add_item') }}
           </button>
         </div>
         <p class="mb-3 text-xs text-neutral-500">{{ t('invoice.negative_item_hint') }}</p>
