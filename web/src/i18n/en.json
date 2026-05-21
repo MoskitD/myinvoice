@@ -1465,8 +1465,31 @@
       "coming_hint": "—"
     },
     "ai": {
-      "tab": "AI extraction (PDF)",
-      "coming_hint": "Anthropic Claude vision for extracting data from PDFs without ISDOC — phase 2c. BYOK API key, ~$0.001/invoice (Haiku 4.5)."
+      "tab": "AI extraction",
+      "credentials_title": "Anthropic Claude API",
+      "credentials_hint": "BYOK — create your own API key at console.anthropic.com and paste it here. AI extracts data from PDF invoices without ISDOC.",
+      "api_key": "API key",
+      "api_key_hint": "Find at console.anthropic.com → Settings → API Keys. Starts with sk-ant-…",
+      "default_model": "Default model",
+      "cost_haiku": "Haiku 4.5 (~$0.003/invoice, fast)",
+      "cost_sonnet": "Sonnet 4.6 (~$0.012/invoice, better quality)",
+      "cost_opus": "Opus 4.7 (~$0.06/invoice, best)",
+      "test_success": "Anthropic API works — model {model}.",
+      "delete_confirm": "Really remove Anthropic API key?",
+      "deleted": "Anthropic credentials removed",
+      "extractions_count": "Extractions: {n}",
+      "extract_title": "Extract from PDF",
+      "extract_hint": "ISDOC priority — if PDF has embed, use parser. Otherwise Claude vision. Synchronous (10-30s).",
+      "drop_pdf": "Click or drop a PDF",
+      "model_override": "Model for this request:",
+      "use_default": "Default",
+      "run_extract": "Extract + create draft",
+      "extracting": "Extracting…",
+      "extract_success": "Invoice created",
+      "extracted_via": "Extracted via: {source}",
+      "go_to_invoice": "Open invoice",
+      "raw_data": "Raw JSON from AI",
+      "coming_hint": "—"
     }
   },
   "imports": {

@@ -69,6 +69,31 @@ export interface FakturoidStartParams {
   dry_run?: boolean
 }
 
+export interface AnthropicCredentialsStatus {
+  configured: boolean
+  default_model: string
+  extractions_count: number
+  allowed_models: string[]
+}
+
+export interface AnthropicCredentialsUpdateResult {
+  saved: boolean
+  test_ok: boolean
+  test_error: string | null
+  model: string | null
+}
+
+export interface AiExtractResult {
+  ok: boolean
+  purchase_invoice_id?: number
+  vendor_id?: number
+  source: 'isdoc_embedded' | 'ai' | 'ai_failed' | 'ai_invalid' | 'wrong_tenant' | 'no_vendor' | 'create_failed'
+  model?: string
+  usage?: { input_tokens?: number; output_tokens?: number }
+  ai_data?: Record<string, unknown>
+  error?: string
+}
+
 export const integrationsApi = {
   // iDoklad credentials
   getIdokladCreds: () =>
@@ -97,6 +122,25 @@ export const integrationsApi = {
     api.post<{ job_id: number; status: string; params: FakturoidStartParams }>(
       '/admin/imports/fakturoid/start', params,
     ).then(r => r.data),
+
+  // Anthropic Claude
+  getAnthropicCreds: () =>
+    api.get<AnthropicCredentialsStatus>('/admin/imports/anthropic/credentials').then(r => r.data),
+  setAnthropicCreds: (apiKey: string, defaultModel = 'claude-haiku-4-5') =>
+    api.put<AnthropicCredentialsUpdateResult>('/admin/imports/anthropic/credentials', {
+      api_key: apiKey, default_model: defaultModel,
+    }).then(r => r.data),
+  deleteAnthropicCreds: () =>
+    api.delete<{ ok: boolean }>('/admin/imports/anthropic/credentials').then(r => r.data),
+  extractPdfAi: (file: File, model?: string) => {
+    const fd = new FormData()
+    fd.append('pdf', file, file.name)
+    const url = model ? `/admin/imports/ai-extract-pdf?model=${model}` : '/admin/imports/ai-extract-pdf'
+    return api.post<AiExtractResult>(url, fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 120000, // 2 min — AI inference může trvat
+    }).then(r => r.data)
+  },
 
   // Shared job tracking
   getJob: (id: number) =>

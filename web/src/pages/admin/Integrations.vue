@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { integrationsApi, type IdokladCredentialsStatus, type FakturoidCredentialsStatus, type ImportJob } from '@/api/integrations'
+import { integrationsApi,
+  type IdokladCredentialsStatus, type FakturoidCredentialsStatus,
+  type AnthropicCredentialsStatus, type AiExtractResult, type ImportJob } from '@/api/integrations'
+import { useRouter } from 'vue-router'
 import { useToast } from '@/composables/useToast'
 import { apiErrorMessage } from '@/api/errors'
 
@@ -212,9 +215,103 @@ async function startFakImport() {
   }
 }
 
+// ── Anthropic AI ─────────────────────────────────────────────────────
+const router = useRouter()
+const aiStatus = ref<AnthropicCredentialsStatus | null>(null)
+const aiApiKey = ref('')
+const aiModel = ref('claude-haiku-4-5')
+const aiShowKey = ref(false)
+const aiSaving = ref(false)
+const aiTestMsg = ref<{ ok: boolean; text: string } | null>(null)
+
+const aiPdfFile = ref<File | null>(null)
+const aiExtracting = ref(false)
+const aiResult = ref<AiExtractResult | null>(null)
+const aiPerRequestModel = ref('')  // empty = použít default
+
+async function loadAiStatus() {
+  try {
+    aiStatus.value = await integrationsApi.getAnthropicCreds()
+    if (aiStatus.value) aiModel.value = aiStatus.value.default_model
+  } catch (e) {
+    toast.error(apiErrorMessage(e))
+  }
+}
+
+async function saveAiCreds() {
+  if (!aiApiKey.value || !aiApiKey.value.startsWith('sk-ant-')) {
+    toast.error('API key musí začínat "sk-ant-"')
+    return
+  }
+  aiSaving.value = true
+  aiTestMsg.value = null
+  try {
+    const r = await integrationsApi.setAnthropicCreds(aiApiKey.value, aiModel.value)
+    if (r.test_ok) {
+      aiTestMsg.value = { ok: true, text: t('integrations.ai.test_success', { model: r.model || '' }) }
+      aiApiKey.value = ''
+      await loadAiStatus()
+    } else {
+      aiTestMsg.value = { ok: false, text: r.test_error || 'Test selhal' }
+    }
+  } catch (e) {
+    aiTestMsg.value = { ok: false, text: apiErrorMessage(e) }
+  } finally {
+    aiSaving.value = false
+  }
+}
+
+async function deleteAiCreds() {
+  if (!confirm(t('integrations.ai.delete_confirm'))) return
+  try {
+    await integrationsApi.deleteAnthropicCreds()
+    aiStatus.value = null
+    aiApiKey.value = ''
+    aiTestMsg.value = null
+    toast.success(t('integrations.ai.deleted'))
+  } catch (e) {
+    toast.error(apiErrorMessage(e))
+  }
+}
+
+function onAiPdfPick(e: Event) {
+  const input = e.target as HTMLInputElement
+  aiPdfFile.value = input.files?.[0] ?? null
+  aiResult.value = null
+}
+
+async function runAiExtract() {
+  if (!aiPdfFile.value || aiExtracting.value) return
+  aiExtracting.value = true
+  aiResult.value = null
+  try {
+    const model = aiPerRequestModel.value || undefined
+    aiResult.value = await integrationsApi.extractPdfAi(aiPdfFile.value, model)
+    if (aiResult.value.ok) {
+      toast.success(t('integrations.ai.extract_success'))
+      await loadAiStatus()  // refresh counter
+    }
+  } catch (e: any) {
+    // Server vrátil 422 (extraction_failed) — extract ai_data ze response
+    const respData = e?.response?.data
+    if (respData?.error?.details) {
+      aiResult.value = { ok: false, ...respData.error.details, error: respData.error.message, source: respData.error.details?.source ?? 'ai_failed' }
+    } else {
+      toast.error(apiErrorMessage(e))
+    }
+  } finally {
+    aiExtracting.value = false
+  }
+}
+
+function gotoInvoice(id: number) {
+  router.push(`/purchase-invoices/${id}`)
+}
+
 onMounted(() => {
   loadIdokladStatus()
   loadFakStatus()
+  loadAiStatus()
 })
 
 onUnmounted(() => {
@@ -240,8 +337,8 @@ onUnmounted(() => {
           : 'border-transparent text-neutral-600 hover:text-neutral-900'"
       >
         {{ t('integrations.' + tt + '.tab') }}
-        <span v-if="tt === 'ai'" class="text-[10px] uppercase tracking-wide bg-neutral-100 text-neutral-500 px-1.5 py-0.5 rounded">
-          {{ t('integrations.coming_soon') }}
+        <span v-if="tt === 'ai'" class="text-[10px] uppercase tracking-wide bg-warning-50 text-warning-600 border border-warning-500/40 px-1.5 py-0.5 rounded">
+          BETA
         </span>
       </button>
     </div>
@@ -548,12 +645,123 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <!-- ════ AI placeholder ════ -->
-    <div v-else class="bg-white border border-neutral-200 rounded-lg p-8 shadow-sm text-center">
-      <div class="text-neutral-500 text-sm">
-        <strong>{{ t('integrations.coming_soon') }}</strong> —
-        {{ t('integrations.ai.coming_hint') }}
+    <!-- ════ AI extrakce (Anthropic Claude) ════ -->
+    <div v-else-if="tab === 'ai'" class="space-y-4">
+      <div class="bg-white border border-neutral-200 rounded-lg p-5 shadow-sm">
+        <h2 class="text-sm font-medium text-neutral-700 mb-2">{{ t('integrations.ai.credentials_title') }}</h2>
+        <p class="text-xs text-neutral-500 mb-4">{{ t('integrations.ai.credentials_hint') }}</p>
+
+        <div class="rounded-md bg-primary-50 border border-primary-200 px-3 py-2 text-sm text-primary-700 mb-4" v-if="aiStatus?.configured">
+          <strong>✓ {{ t('integrations.idoklad.configured') }}</strong>
+          <span class="ml-2 font-mono text-xs">{{ aiStatus.default_model }}</span>
+          <span class="ml-3 text-xs">{{ t('integrations.ai.extractions_count', { n: aiStatus.extractions_count }) }}</span>
+        </div>
+
+        <div class="space-y-3">
+          <div>
+            <label class="block text-sm text-neutral-700 mb-1">{{ t('integrations.ai.api_key') }} *</label>
+            <div class="flex gap-2">
+              <input v-model="aiApiKey" :type="aiShowKey ? 'text' : 'password'" maxlength="256"
+                     class="flex-1 h-10 px-3 border border-neutral-300 rounded-md text-sm font-mono"
+                     placeholder="sk-ant-…"
+                     :readonly="aiStatus?.configured" />
+              <button type="button" @click="aiShowKey = !aiShowKey"
+                      class="cursor-pointer h-10 px-3 border border-neutral-300 rounded-md hover:bg-neutral-50 text-sm">
+                {{ aiShowKey ? '🙈' : '👁' }}
+              </button>
+            </div>
+            <p class="text-xs text-neutral-500 mt-1">{{ t('integrations.ai.api_key_hint') }}</p>
+          </div>
+          <div>
+            <label class="block text-sm text-neutral-700 mb-1">{{ t('integrations.ai.default_model') }}</label>
+            <select v-model="aiModel" class="w-full h-10 px-3 border border-neutral-300 rounded-md bg-white text-sm">
+              <option v-for="m in (aiStatus?.allowed_models || ['claude-haiku-4-5', 'claude-sonnet-4-6', 'claude-opus-4-7'])" :key="m" :value="m">
+                {{ m }} —
+                {{ m.includes('haiku') ? t('integrations.ai.cost_haiku')
+                 : m.includes('sonnet') ? t('integrations.ai.cost_sonnet')
+                 : t('integrations.ai.cost_opus') }}
+              </option>
+            </select>
+          </div>
+        </div>
+
+        <div v-if="aiTestMsg" class="mt-3 rounded-md px-3 py-2 text-sm"
+             :class="aiTestMsg.ok ? 'bg-success-50 text-success-600 border border-success-500/40' : 'bg-danger-50 text-danger-500 border border-danger-500/40'">
+          {{ aiTestMsg.text }}
+        </div>
+
+        <div class="flex items-center justify-between gap-2 mt-4 pt-4 border-t border-neutral-100">
+          <button v-if="aiStatus?.configured" type="button" @click="deleteAiCreds"
+                  class="cursor-pointer h-10 px-4 text-sm border border-danger-500/50 text-danger-500 hover:bg-danger-50 rounded-md">
+            {{ t('integrations.idoklad.delete') }}
+          </button>
+          <span v-else></span>
+          <button type="button" @click="saveAiCreds" :disabled="aiSaving"
+                  class="cursor-pointer h-10 px-5 text-sm bg-primary-600 hover:bg-primary-700 disabled:bg-neutral-300 text-white font-medium rounded-md">
+            {{ aiSaving ? '…' : t('integrations.idoklad.save_and_test') }}
+          </button>
+        </div>
       </div>
+
+      <!-- AI PDF extract -->
+      <div v-if="aiStatus?.configured" class="bg-white border border-neutral-200 rounded-lg p-5 shadow-sm">
+        <h2 class="text-sm font-medium text-neutral-700 mb-2">{{ t('integrations.ai.extract_title') }}</h2>
+        <p class="text-xs text-neutral-500 mb-4">{{ t('integrations.ai.extract_hint') }}</p>
+
+        <div class="space-y-3">
+          <label class="block border-2 border-dashed border-neutral-300 hover:border-primary-400 hover:bg-primary-50/30 rounded-lg p-6 text-center cursor-pointer transition">
+            <input type="file" accept="application/pdf,.pdf" @change="onAiPdfPick" class="hidden" />
+            <svg class="w-8 h-8 mx-auto text-neutral-400 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 0 1-.88-7.9 5 5 0 0 1 9.9-1A5.5 5.5 0 0 1 18.5 16H17m-5-4v9m0-9l-3 3m3-3l3 3" />
+            </svg>
+            <div class="text-sm font-medium text-neutral-700">
+              {{ aiPdfFile ? aiPdfFile.name : t('integrations.ai.drop_pdf') }}
+            </div>
+            <div v-if="aiPdfFile" class="text-xs text-neutral-500 mt-1">{{ Math.round(aiPdfFile.size / 1024) }} kB</div>
+          </label>
+
+          <div class="flex items-center gap-2">
+            <label class="text-sm text-neutral-700">{{ t('integrations.ai.model_override') }}</label>
+            <select v-model="aiPerRequestModel" class="h-9 px-2 border border-neutral-300 rounded-md bg-white text-sm">
+              <option value="">{{ t('integrations.ai.use_default') }} ({{ aiStatus.default_model }})</option>
+              <option v-for="m in aiStatus.allowed_models" :key="m" :value="m">{{ m }}</option>
+            </select>
+          </div>
+
+          <button type="button" @click="runAiExtract" :disabled="!aiPdfFile || aiExtracting"
+                  class="cursor-pointer w-full h-10 bg-primary-600 hover:bg-primary-700 disabled:bg-neutral-300 text-white text-sm font-medium rounded-md">
+            {{ aiExtracting ? t('integrations.ai.extracting') : t('integrations.ai.run_extract') }}
+          </button>
+        </div>
+
+        <div v-if="aiResult" class="mt-4 pt-4 border-t border-neutral-100">
+          <div v-if="aiResult.ok" class="rounded-md bg-success-50 border border-success-500/40 px-3 py-2 text-sm text-success-600">
+            <strong>✓ {{ t('integrations.ai.extracted_via', { source: aiResult.source }) }}</strong>
+            <button v-if="aiResult.purchase_invoice_id" type="button" @click="gotoInvoice(aiResult.purchase_invoice_id!)"
+                    class="ml-3 cursor-pointer underline hover:text-success-700">
+              {{ t('integrations.ai.go_to_invoice') }} #{{ aiResult.purchase_invoice_id }}
+            </button>
+            <div v-if="aiResult.usage" class="text-xs mt-1 font-mono">
+              Tokens: in={{ aiResult.usage.input_tokens }}, out={{ aiResult.usage.output_tokens }}
+              <span v-if="aiResult.model" class="ml-2">· {{ aiResult.model }}</span>
+            </div>
+          </div>
+          <div v-else class="rounded-md bg-danger-50 border border-danger-500/40 px-3 py-2 text-sm text-danger-500">
+            <strong>✗ {{ aiResult.error }}</strong>
+            <div class="text-xs mt-1">Source: {{ aiResult.source }}</div>
+          </div>
+
+          <details v-if="aiResult.ai_data" class="mt-3 text-xs">
+            <summary class="cursor-pointer text-neutral-600 hover:text-neutral-900">{{ t('integrations.ai.raw_data') }}</summary>
+            <pre class="mt-2 max-h-72 overflow-y-auto bg-neutral-900 text-neutral-100 p-3 rounded font-mono text-[11px] whitespace-pre-wrap">{{ JSON.stringify(aiResult.ai_data, null, 2) }}</pre>
+          </details>
+        </div>
+      </div>
+    </div>
+
+    <!-- Fallback (žádný tab nevyhovuje) -->
+    <div v-else class="bg-white border border-neutral-200 rounded-lg p-8 shadow-sm text-center text-neutral-500 text-sm">
+      —
     </div>
   </div>
 </template>

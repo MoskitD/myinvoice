@@ -29,6 +29,8 @@ use MyInvoice\Action\Admin\Import\ImportJobStatusAction;
 use MyInvoice\Action\Admin\Import\CancelImportJobAction;
 use MyInvoice\Action\Admin\Import\IdokladCredentialsAction;
 use MyInvoice\Action\Admin\Import\FakturoidCredentialsAction;
+use MyInvoice\Action\Admin\Import\AnthropicCredentialsAction;
+use MyInvoice\Action\Admin\Import\AiExtractPdfAction;
 use MyInvoice\Action\Admin\InvoicesZipAction;
 use MyInvoice\Action\Admin\CronJobsAction;
 use MyInvoice\Action\Admin\RunCronJobAction;
@@ -273,6 +275,12 @@ final class Routes
         $app->put    ('/api/admin/imports/fakturoid/credentials', [FakturoidCredentialsAction::class, 'update']);
         $app->delete ('/api/admin/imports/fakturoid/credentials', [FakturoidCredentialsAction::class, 'delete']);
         $app->post   ('/api/admin/imports/fakturoid/start',       StartFakturoidImportAction::class);
+
+        // Anthropic Claude AI extraction (fáze 2c) — BYOK + synchronní PDF extract
+        $app->get    ('/api/admin/imports/anthropic/credentials', [AnthropicCredentialsAction::class, 'status']);
+        $app->put    ('/api/admin/imports/anthropic/credentials', [AnthropicCredentialsAction::class, 'update']);
+        $app->delete ('/api/admin/imports/anthropic/credentials', [AnthropicCredentialsAction::class, 'delete']);
+        $app->post   ('/api/admin/imports/ai-extract-pdf',        AiExtractPdfAction::class);
 
         $app->get    ('/api/admin/imports/{id:[0-9]+}',         ImportJobStatusAction::class);
         $app->post   ('/api/admin/imports/{id:[0-9]+}/cancel',  CancelImportJobAction::class);

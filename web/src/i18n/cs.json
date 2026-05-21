@@ -1465,8 +1465,31 @@
       "coming_hint": "—"
     },
     "ai": {
-      "tab": "AI extrakce (PDF)",
-      "coming_hint": "Anthropic Claude vision pro extrakci dat z PDF faktur bez ISDOC — fáze 2c. BYOK API klíč, ~$0.001/faktura (Haiku 4.5)."
+      "tab": "AI extrakce",
+      "credentials_title": "Anthropic Claude API",
+      "credentials_hint": "BYOK — vytvoř si vlastní API klíč na console.anthropic.com a vlož sem. AI extrahuje data z PDF faktur bez ISDOC.",
+      "api_key": "API klíč",
+      "api_key_hint": "Najdeš na console.anthropic.com → Settings → API Keys. Začíná sk-ant-…",
+      "default_model": "Výchozí model",
+      "cost_haiku": "Haiku 4.5 (~$0.003/faktura, rychlý)",
+      "cost_sonnet": "Sonnet 4.6 (~$0.012/faktura, lepší kvalita)",
+      "cost_opus": "Opus 4.7 (~$0.06/faktura, nejlepší)",
+      "test_success": "Anthropic API funguje — model {model}.",
+      "delete_confirm": "Opravdu odebrat Anthropic API klíč?",
+      "deleted": "Anthropic credentials odebrány",
+      "extractions_count": "Extrakcí: {n}",
+      "extract_title": "Extrahovat z PDF",
+      "extract_hint": "ISDOC priorita — pokud PDF má embed, použijeme parser. Jinak Claude vision. Synchronní (10-30s).",
+      "drop_pdf": "Klikni nebo přetáhni PDF",
+      "model_override": "Model pro tento request:",
+      "use_default": "Výchozí",
+      "run_extract": "Extrahovat + vytvořit draft",
+      "extracting": "Extrahuji…",
+      "extract_success": "Faktura vytvořena",
+      "extracted_via": "Extrahováno přes: {source}",
+      "go_to_invoice": "Otevřít fakturu",
+      "raw_data": "Raw JSON z AI",
+      "coming_hint": "—"
     }
   },
   "imports": {
