@@ -260,9 +260,16 @@ final class BankStatementAction
 
         $body = (array) ($request->getParsedBody() ?? []);
         $invoiceId = (int) ($body['invoice_id'] ?? 0);
+        $purchaseInvoiceId = (int) ($body['purchase_invoice_id'] ?? 0);
         $varsymbol = trim((string) ($body['varsymbol'] ?? ''));
 
+        // Purchase invoice match (přijatá faktura — outgoing payment)
+        if ($purchaseInvoiceId > 0) {
+            return $this->manualMatchPurchase($request, $response, $txId, $purchaseInvoiceId);
+        }
+
         // Pokud uživatel poslal varsymbol místo invoice_id, najdi fakturu v supplier scope.
+        // Fallback: zkus i přijaté faktury (purchase_invoices) — pro outgoing transakce.
         if ($invoiceId <= 0 && $varsymbol !== '') {
             $sid = SupplierGuard::currentId($request);
             $stmt = $this->db->pdo()->prepare(
@@ -271,7 +278,17 @@ final class BankStatementAction
             $stmt->execute([$sid, $varsymbol]);
             $invoiceId = (int) $stmt->fetchColumn();
             if ($invoiceId <= 0) {
-                return Json::error($response, 'invoice_not_found', "Faktura s VS '$varsymbol' nenalezena.", 404);
+                // Fallback: purchase_invoice match (přijatá faktura, my platíme dodavateli)
+                $stmt = $this->db->pdo()->prepare(
+                    'SELECT id FROM purchase_invoices WHERE supplier_id = ? AND varsymbol = ? LIMIT 1'
+                );
+                $stmt->execute([$sid, $varsymbol]);
+                $pid = (int) $stmt->fetchColumn();
+                if ($pid > 0) {
+                    return $this->manualMatchPurchase($request, $response, $txId, $pid);
+                }
+                return Json::error($response, 'invoice_not_found',
+                    "Faktura ani přijatá faktura s VS '$varsymbol' nenalezena.", 404);
             }
         }
 
@@ -358,6 +375,91 @@ final class BankStatementAction
             $result['final_draft_id'] = $finalDraftId;
         }
         return Json::ok($response, $result);
+    }
+
+    /**
+     * Manual match transakce ↔ purchase_invoice (přijatá faktura, outgoing payment).
+     * Používá payment_matches table (N:N model), na rozdíl od vystavených které mají
+     * 1:1 přes bank_transactions.matched_invoice_id.
+     */
+    private function manualMatchPurchase(Request $request, Response $response, int $txId, int $purchaseInvoiceId): Response
+    {
+        $supplierId = SupplierGuard::currentId($request);
+        $pdo = $this->db->pdo();
+
+        // Validate purchase invoice belongs to tenant + is in payable status
+        $stmt = $pdo->prepare(
+            'SELECT id, supplier_id, status, COALESCE(amount_to_pay, total_with_vat, 0) AS amount_to_pay
+               FROM purchase_invoices WHERE id = ?'
+        );
+        $stmt->execute([$purchaseInvoiceId]);
+        $pi = $stmt->fetch(\PDO::FETCH_ASSOC);
+        if (!$pi || (int) $pi['supplier_id'] !== $supplierId) {
+            return Json::error($response, 'purchase_not_found', 'Přijatá faktura nenalezena.', 404);
+        }
+        if (!in_array($pi['status'], ['received', 'booked'], true)) {
+            return Json::error($response, 'invalid_status',
+                "Faktura ve stavu '{$pi['status']}' nelze manuálně označit jako zaplacenou.", 409);
+        }
+
+        // Load transaction for amount + posted_at
+        $tx = $pdo->prepare('SELECT posted_at, amount, statement_id FROM bank_transactions WHERE id = ?');
+        $tx->execute([$txId]);
+        $txRow = $tx->fetch(\PDO::FETCH_ASSOC) ?: [];
+        $postedAt = (string) ($txRow['posted_at'] ?? date('Y-m-d'));
+        $statementId = (int) ($txRow['statement_id'] ?? 0);
+        $absAmount = abs((float) ($txRow['amount'] ?? 0));
+
+        $userId = (int) (((array) $request->getAttribute(AuthMiddleware::ATTR_USER, []))['id'] ?? 0);
+
+        $pdo->beginTransaction();
+        try {
+            // Mark purchase paid
+            $pdo->prepare(
+                "UPDATE purchase_invoices SET status = 'paid', paid_at = ? WHERE id = ?"
+            )->execute([$postedAt, $purchaseInvoiceId]);
+
+            // Insert payment_match row (N:N support pro splátky)
+            $pdo->prepare(
+                "INSERT INTO payment_matches
+                    (supplier_id, bank_transaction_id, purchase_invoice_id, amount, match_type, matched_by_user_id)
+                 VALUES (?, ?, ?, ?, 'manual', ?)"
+            )->execute([$supplierId, $txId, $purchaseInvoiceId, $absAmount, $userId ?: null]);
+
+            // Mark transakci jako manual (matched_invoice_id zůstane NULL — to je pro vystavené)
+            $pdo->prepare(
+                "UPDATE bank_transactions
+                    SET match_status = 'manual', matched_at = NOW(), matched_by = ?
+                  WHERE id = ?"
+            )->execute([$userId ?: null, $txId]);
+
+            // Recompute statement counter
+            if ($statementId > 0) {
+                $pdo->prepare(
+                    "UPDATE bank_statements SET matched_count = (
+                        SELECT COUNT(*) FROM bank_transactions
+                         WHERE statement_id = ? AND match_status IN ('auto_exact', 'auto_partial', 'manual')
+                    ) WHERE id = ?"
+                )->execute([$statementId, $statementId]);
+            }
+            $pdo->commit();
+        } catch (\Throwable $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            return Json::error($response, 'match_failed', 'Párování selhalo: ' . $e->getMessage(), 500);
+        }
+
+        $ip = $this->ipMatcher->clientIpFromRequest($request->getServerParams());
+        $this->logger->log('bank.tx_manual_match_purchase', $userId ?: null, 'bank_transaction', $txId, [
+            'purchase_invoice_id' => $purchaseInvoiceId,
+            'paid_at'             => $postedAt,
+            'amount'              => $absAmount,
+        ], $ip, $request->getHeaderLine('User-Agent'));
+
+        return Json::ok($response, [
+            'matched'             => true,
+            'paid_at'             => $postedAt,
+            'purchase_invoice_id' => $purchaseInvoiceId,
+        ]);
     }
 
     public function unmatch(Request $request, Response $response, array $args): Response

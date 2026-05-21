@@ -59,9 +59,10 @@ export const bankApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
     }).then(r => r.data)
   },
-  matchManual: (txId: number, ref: { invoiceId?: number; varsymbol?: string }) =>
-    api.post<{ matched: true; paid_at?: string }>(`/bank-transactions/${txId}/match`, {
+  matchManual: (txId: number, ref: { invoiceId?: number; purchaseInvoiceId?: number; varsymbol?: string }) =>
+    api.post<{ matched: true; paid_at?: string; purchase_invoice_id?: number }>(`/bank-transactions/${txId}/match`, {
       ...(ref.invoiceId ? { invoice_id: ref.invoiceId } : {}),
+      ...(ref.purchaseInvoiceId ? { purchase_invoice_id: ref.purchaseInvoiceId } : {}),
       ...(ref.varsymbol ? { varsymbol: ref.varsymbol } : {}),
     }).then(r => r.data),
   ignore: (txId: number) =>
