@@ -60,16 +60,24 @@ final class DphPriznaniAction
     }
 
     /**
-     * GET /api/reports/dphdp3/drafts-prediction → součet VAT z koncept faktur
-     * (predikce DPH pro budoucí přiznání). Returns:
-     *   { vat_output, vat_input, tax_due, sale_count, purchase_count }
+     * GET /api/reports/dphdp3/drafts-prediction?year=&month=&period= → predikce DPH
+     * pro zvolené přiznací období (měsíc / kvartál). Returns:
+     *   { year, month, period, vat_output, vat_input, tax_due,
+     *     sale_count, sale_draft_count, purchase_count, purchase_draft_count }
      *
      * Pravidla:
-     * - sale (vydané): status='draft', invoice_type IN (invoice, credit_note)
-     * - purchase (přijaté): status='draft'
-     * - Multi-currency: total_vat × COALESCE(exchange_rate, 1) → CZK. Drafty bez
-     *   nastaveného kurzu se počítají jako 1:1 (UI v 4. boxu varuje, že je to
-     *   pouze odhad).
+     * - Období vymezeno `COALESCE(tax_date, issue_date) BETWEEN start AND end`
+     *   (drafty často DUZP zatím nemají — `tax_date` může být NULL).
+     * - sale (vydané): invoice_type IN (invoice, credit_note), status NOT IN
+     *   (cancelled), tedy bere finalizované doklady i koncepty pro zvolené
+     *   období.
+     * - purchase (přijaté): status NOT IN (cancelled), bere obojí (doklady
+     *   i koncepty).
+     * - Multi-currency: total_vat × COALESCE(exchange_rate, 1) → CZK. Drafty
+     *   bez nastaveného kurzu se počítají jako 1:1.
+     *
+     * Default year/month: aktuální datum. Default period: supplier.vat_period
+     * (fallback 'monthly').
      */
     public function draftsPrediction(Request $request, Response $response): Response
     {
@@ -80,38 +88,73 @@ final class DphPriznaniAction
         $supplierId = SupplierGuard::currentId($request);
         $pdo = $this->db->pdo();
 
+        $q = $request->getQueryParams();
+        $year  = (int) ($q['year']  ?? date('Y'));
+        $month = (int) ($q['month'] ?? date('n'));
+        if ($month < 1 || $month > 12 || $year < 2020 || $year > 2050) {
+            return Json::error($response, 'validation_failed', 'Neplatný rok/měsíc.', 400);
+        }
+        $period = (string) ($q['period'] ?? '');
+        if (!in_array($period, ['monthly', 'quarterly'], true)) {
+            $stmt = $pdo->prepare('SELECT vat_period FROM supplier WHERE id = ?');
+            $stmt->execute([$supplierId]);
+            $period = (string) ($stmt->fetchColumn() ?: 'monthly');
+            if (!in_array($period, ['monthly', 'quarterly'], true)) $period = 'monthly';
+        }
+
+        if ($period === 'quarterly') {
+            $quarter = (int) ceil($month / 3);
+            $startMonth = ($quarter - 1) * 3 + 1;
+            $endMonth   = $quarter * 3;
+            $start = sprintf('%04d-%02d-01', $year, $startMonth);
+            $end = (new \DateTimeImmutable(sprintf('%04d-%02d-01', $year, $endMonth)))
+                ->modify('last day of this month')->format('Y-m-d');
+        } else {
+            $start = sprintf('%04d-%02d-01', $year, $month);
+            $end = (new \DateTimeImmutable($start))->modify('last day of this month')->format('Y-m-d');
+        }
+
         $saleStmt = $pdo->prepare(
             "SELECT COALESCE(SUM(i.total_vat * COALESCE(IF(cur.code='CZK', 1, i.exchange_rate), 1)), 0) AS vat,
-                    COUNT(*) AS cnt
+                    COUNT(*) AS cnt,
+                    SUM(CASE WHEN i.status = 'draft' THEN 1 ELSE 0 END) AS draft_cnt
                FROM invoices i
                JOIN currencies cur ON cur.id = i.currency_id
               WHERE i.supplier_id = ?
-                AND i.status = 'draft'
-                AND i.invoice_type IN ('invoice', 'credit_note')"
+                AND i.status <> 'cancelled'
+                AND i.invoice_type IN ('invoice', 'credit_note')
+                AND COALESCE(i.tax_date, i.issue_date) BETWEEN ? AND ?"
         );
-        $saleStmt->execute([$supplierId]);
-        $sale = $saleStmt->fetch(\PDO::FETCH_ASSOC) ?: ['vat' => 0, 'cnt' => 0];
+        $saleStmt->execute([$supplierId, $start, $end]);
+        $sale = $saleStmt->fetch(\PDO::FETCH_ASSOC) ?: ['vat' => 0, 'cnt' => 0, 'draft_cnt' => 0];
 
         $purchaseStmt = $pdo->prepare(
             "SELECT COALESCE(SUM(pi.total_vat * COALESCE(IF(cur.code='CZK', 1, pi.exchange_rate), 1)), 0) AS vat,
-                    COUNT(*) AS cnt
+                    COUNT(*) AS cnt,
+                    SUM(CASE WHEN pi.status = 'draft' THEN 1 ELSE 0 END) AS draft_cnt
                FROM purchase_invoices pi
                JOIN currencies cur ON cur.id = pi.currency_id
               WHERE pi.supplier_id = ?
-                AND pi.status = 'draft'"
+                AND pi.status <> 'cancelled'
+                AND COALESCE(pi.tax_date, pi.issue_date) BETWEEN ? AND ?"
         );
-        $purchaseStmt->execute([$supplierId]);
-        $purchase = $purchaseStmt->fetch(\PDO::FETCH_ASSOC) ?: ['vat' => 0, 'cnt' => 0];
+        $purchaseStmt->execute([$supplierId, $start, $end]);
+        $purchase = $purchaseStmt->fetch(\PDO::FETCH_ASSOC) ?: ['vat' => 0, 'cnt' => 0, 'draft_cnt' => 0];
 
         $vatOutput = (float) $sale['vat'];
         $vatInput  = (float) $purchase['vat'];
 
         return Json::ok($response, [
-            'vat_output'     => $vatOutput,
-            'vat_input'      => $vatInput,
-            'tax_due'        => $vatOutput - $vatInput,
-            'sale_count'     => (int) $sale['cnt'],
-            'purchase_count' => (int) $purchase['cnt'],
+            'year'                 => $year,
+            'month'                => $month,
+            'period'               => $period,
+            'vat_output'           => $vatOutput,
+            'vat_input'            => $vatInput,
+            'tax_due'              => $vatOutput - $vatInput,
+            'sale_count'           => (int) $sale['cnt'],
+            'sale_draft_count'     => (int) $sale['draft_cnt'],
+            'purchase_count'       => (int) $purchase['cnt'],
+            'purchase_draft_count' => (int) $purchase['draft_cnt'],
         ]);
     }
 

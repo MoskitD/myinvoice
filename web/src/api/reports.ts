@@ -38,11 +38,16 @@ export interface DphTrendRow {
 }
 
 export interface DphDraftsPrediction {
+  year: number
+  month: number
+  period: 'monthly' | 'quarterly'
   vat_output: number
   vat_input: number
   tax_due: number
   sale_count: number
+  sale_draft_count: number
   purchase_count: number
+  purchase_draft_count: number
 }
 
 export const reportsApi = {
@@ -57,8 +62,10 @@ export const reportsApi = {
   dphTrend: (months = 12) =>
     api.get<DphTrendRow[]>('/reports/dphdp3/trend', { params: { months } }).then(r => r.data),
 
-  dphDraftsPrediction: () =>
-    api.get<DphDraftsPrediction>('/reports/dphdp3/drafts-prediction').then(r => r.data),
+  dphDraftsPrediction: (year: number, month: number, period?: 'monthly' | 'quarterly') =>
+    api.get<DphDraftsPrediction>('/reports/dphdp3/drafts-prediction', {
+      params: { year, month, ...(period ? { period } : {}) },
+    }).then(r => r.data),
 
   khPreview: (year: number, month: number) =>
     api.get<{

@@ -38,7 +38,7 @@ async function loadAll() {
       reportsApi.dphSettings(),
       reportsApi.dphPreview(year.value, month.value, periodOverride.value || undefined),
       reportsApi.dphTrend(12),
-      reportsApi.dphDraftsPrediction().catch(() => null),
+      reportsApi.dphDraftsPrediction(year.value, month.value, periodOverride.value || undefined).catch(() => null),
     ])
     settings.value = s
     preview.value = p
@@ -240,7 +240,7 @@ onMounted(loadAll)
         </div>
       </div>
 
-      <!-- Predikce DPH z konceptů — zobrazí se pouze pokud existují drafty -->
+      <!-- Predikce DPH pro zvolené období (zahrnuje vystavené i koncepty) -->
       <div v-if="draftsPrediction && (draftsPrediction.sale_count + draftsPrediction.purchase_count) > 0"
         class="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div class="bg-warning-50 border border-warning-500/40 rounded-lg shadow-sm p-5">
@@ -249,7 +249,7 @@ onMounted(loadAll)
             {{ formatMoney(draftsPrediction.vat_output, 'CZK') }}
           </div>
           <div class="text-xs text-neutral-500 mt-1">
-            {{ t('reports.dph.prediction_n_sale_drafts', { n: draftsPrediction.sale_count }) }}
+            {{ t('reports.dph.prediction_n_sale', { n: draftsPrediction.sale_count, d: draftsPrediction.sale_draft_count }) }}
           </div>
         </div>
         <div class="bg-warning-50 border border-warning-500/40 rounded-lg shadow-sm p-5">
@@ -258,7 +258,7 @@ onMounted(loadAll)
             {{ formatMoney(draftsPrediction.vat_input, 'CZK') }}
           </div>
           <div class="text-xs text-neutral-500 mt-1">
-            {{ t('reports.dph.prediction_n_purchase_drafts', { n: draftsPrediction.purchase_count }) }}
+            {{ t('reports.dph.prediction_n_purchase', { n: draftsPrediction.purchase_count, d: draftsPrediction.purchase_draft_count }) }}
           </div>
         </div>
         <div class="bg-warning-50 border border-warning-500/40 rounded-lg shadow-sm p-5">
