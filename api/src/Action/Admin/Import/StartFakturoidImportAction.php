@@ -81,18 +81,14 @@ final class StartFakturoidImportAction
 
     private function spawnWorker(int $jobId): void
     {
+        // Stejný ověřený mechanismus jako admin/cron-jobs (BackgroundProcess) —
+        // dřívější ruční `cmd /c start /b` worker pod IIS nespustil (job uvízl "queued").
         $rootDir = dirname(__DIR__, 4);
-        $workerPath = $rootDir . '/api/bin/import-worker.php';
-        $logFile = $rootDir . '/log/import-worker.log';
-        // CLI php, ne holé "php" — pod IIS/FastCGI php není na PATH a worker by
-        // se tiše nespustil (job by zůstal navždy "queued"). Viz PhpCliLocator.
-        $php = \MyInvoice\Service\PhpCliLocator::resolve() ?? 'php';
-        $cmd = sprintf('"%s" "%s" --job-id=%d', $php, $workerPath, $jobId);
-        if (DIRECTORY_SEPARATOR === '\\') {
-            $fullCmd = "cmd /c start /b \"\" {$cmd} >> \"{$logFile}\" 2>&1";
-            pclose(popen($fullCmd, 'r'));
-        } else {
-            shell_exec("nohup {$cmd} >> {$logFile} 2>&1 &");
-        }
+        \MyInvoice\Service\BackgroundProcess::spawnPhp(
+            $rootDir . '/api/bin/import-worker.php',
+            ['--job-id=' . $jobId],
+            $rootDir . '/log/import-worker.log',
+            $rootDir,
+        );
     }
 }

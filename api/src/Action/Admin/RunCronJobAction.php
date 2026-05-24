@@ -126,39 +126,8 @@ final class RunCronJobAction
      */
     private function spawnBackground(string $phpBin, string $scriptPath, string $logPath, string $cwd, ?string &$diag): bool
     {
-        $diag = null;
-
-        if (PHP_OS_FAMILY === 'Windows') {
-            // Pomocí cmd.exe + start /B se proces odpojí od FastCGI workeru.
-            // popen() na Windows spouští `cmd.exe /c <command>` — start /B v něm
-            // odstartuje proces a vrátí se okamžitě. /D = working directory.
-            $cmd = sprintf(
-                'start /B /D %s "" %s %s >> %s 2>&1',
-                escapeshellarg($cwd),
-                escapeshellarg($phpBin),
-                escapeshellarg($scriptPath),
-                escapeshellarg($logPath)
-            );
-            $proc = @popen($cmd, 'r');
-            if ($proc === false) {
-                $diag = 'popen returned false';
-                return false;
-            }
-            @pclose($proc);
-            $diag = 'popen ok';
-            return true;
-        }
-
-        // POSIX: nohup … & disown — výstup do diag log file pro pozdější inspekci.
-        $cmd = sprintf(
-            'cd %s && nohup %s %s >> %s 2>&1 &',
-            escapeshellarg($cwd),
-            escapeshellarg($phpBin),
-            escapeshellarg($scriptPath),
-            escapeshellarg($logPath)
-        );
-        @exec($cmd, $_out, $rc);
-        $diag = 'exec rc=' . $rc;
-        return $rc === 0;
+        // Sdílený launcher (stejný i pro import workery). $phpBin už je resolved
+        // přes PhpCliLocator; helper si ho dohledá stejně, takže zůstává konzistentní.
+        return \MyInvoice\Service\BackgroundProcess::spawnPhp($scriptPath, [], $logPath, $cwd, $diag);
     }
 }
