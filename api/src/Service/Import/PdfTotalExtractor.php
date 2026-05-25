@@ -98,8 +98,15 @@ final class PdfTotalExtractor
     }
 
     /**
-     * Načíst total z embedded ISDOC XML (LegalMonetaryTotal/PayableRoundedAmount).
-     * Vrací null pokud PDF nemá ISDOC nebo XML nemá tento element.
+     * Načíst total z embedded ISDOC XML (LegalMonetaryTotal/PayableAmount,
+     * fallback TaxInclusiveAmount). Vrací null pokud PDF nemá ISDOC nebo element.
+     *
+     * MĚNA: base (ne-Curr) elementy jsou dle ISDOC v lokální měně (CZK), *Curr
+     * v měně faktury. Recheck porovnává s `total_with_vat`, který je v měně
+     * faktury — u cizoměnového dokladu proto čteme *Curr, jinak bychom srovnávali
+     * CZK vs cizí měnu (≈24× rozdíl → falešný flag). Fallback na base pole zůstává
+     * pro non-konformní exporty, které cizí hodnotu zapíšou rovnou do base
+     * (mirror logiky IsdocParser::parseLine).
      */
     private function tryIsdoc(string $pdfBytes, array &$debug): ?float
     {
@@ -110,8 +117,6 @@ final class PdfTotalExtractor
         }
         $debug['isdoc'] = 'found';
 
-        // Parse XML, hledáme LegalMonetaryTotal/PayableRoundedAmount jako autoritativní
-        // "K úhradě". Fallback na TaxInclusiveAmount (suma vč. DPH, před zaokrouhlením).
         try {
             $dom = new \DOMDocument();
             $dom->loadXML($xml, LIBXML_NONET | LIBXML_NOERROR);
@@ -120,12 +125,27 @@ final class PdfTotalExtractor
             if ($ns !== '') {
                 $xpath->registerNamespace('i', $ns);
             }
-            foreach (['i:LegalMonetaryTotal/i:PayableRoundedAmount', 'i:LegalMonetaryTotal/i:TaxInclusiveAmount'] as $path) {
+
+            $localCur = strtoupper($this->isdocText($xpath, '//i:LocalCurrencyCode') ?: 'CZK');
+            $foreignCur = strtoupper(
+                $this->isdocText($xpath, '//i:ForeignCurrencyCode')
+                ?: $this->isdocText($xpath, '//i:CurrencyCode')   // legacy exporty
+                ?: ''
+            );
+            $isForeign = $foreignCur !== '' && $foreignCur !== $localCur;
+
+            $base = ['i:LegalMonetaryTotal/i:PayableAmount', 'i:LegalMonetaryTotal/i:TaxInclusiveAmount'];
+            $paths = $isForeign
+                ? ['i:LegalMonetaryTotal/i:PayableAmountCurr', 'i:LegalMonetaryTotal/i:TaxInclusiveAmountCurr', ...$base]
+                : $base;
+
+            foreach ($paths as $path) {
                 $node = $xpath->query('//' . $path)->item(0);
                 if ($node !== null && $node->textContent !== '') {
                     $val = (float) str_replace([',', ' '], ['.', ''], $node->textContent);
                     if ($val > 0) {
                         $debug['isdoc_field'] = $path;
+                        $debug['isdoc_currency'] = $isForeign ? $foreignCur : $localCur;
                         return $val;
                     }
                 }
@@ -134,6 +154,12 @@ final class PdfTotalExtractor
             $debug['isdoc_parse_error'] = $e->getMessage();
         }
         return null;
+    }
+
+    private function isdocText(\DOMXPath $xpath, string $expr): string
+    {
+        $node = $xpath->query($expr)->item(0);
+        return $node !== null ? trim($node->textContent) : '';
     }
 
     /**

@@ -105,9 +105,9 @@ final class PdfTotalExtractorTest extends TestCase
 
     // ── tryIsdoc — syntetické PDF s embedded ISDOC XML ──────────────────
 
-    public function testTryIsdoc_extractsPayableRoundedAmount(): void
+    public function testTryIsdoc_extractsPayableAmount(): void
     {
-        // Mini PDF/A-3 stub s ISDOC XML přílohou (LegalMonetaryTotal/PayableRoundedAmount=1502.00)
+        // Mini PDF/A-3 stub s ISDOC XML přílohou (LegalMonetaryTotal/PayableAmount=1502.00)
         $isdocXml = $this->makeIsdocWithTotal('1502.00');
         $pdfBytes = $this->wrapIsdocInPdf($isdocXml);
 
@@ -118,7 +118,7 @@ final class PdfTotalExtractorTest extends TestCase
 
     public function testTryIsdoc_fallsBackToTaxInclusiveAmountWhenNoPayable(): void
     {
-        // Bez PayableRoundedAmount, ale s TaxInclusiveAmount
+        // Bez PayableAmount, ale s TaxInclusiveAmount
         $isdocXml = '<?xml version="1.0"?>
             <Invoice xmlns="http://isdoc.cz/namespace/2013">
                 <LegalMonetaryTotal>
@@ -129,6 +129,46 @@ final class PdfTotalExtractorTest extends TestCase
 
         $r = $this->extractor->extract($pdfBytes);
         $this->assertSame(1502.02, $r['total']);
+        $this->assertSame('isdoc', $r['source']);
+    }
+
+    public function testTryIsdoc_foreignCurrencyReadsCurrNotLocalBase(): void
+    {
+        // Cizoměnový doklad: base PayableAmount je v CZK (61387.20), PayableAmountCurr
+        // v EUR (2520.00). Recheck porovnává s total_with_vat v měně faktury (EUR),
+        // takže musíme vrátit EUR hodnotu z *Curr, ne CZK base.
+        $isdocXml = '<?xml version="1.0"?>
+            <Invoice xmlns="http://isdoc.cz/namespace/2013">
+                <LocalCurrencyCode>CZK</LocalCurrencyCode>
+                <ForeignCurrencyCode>EUR</ForeignCurrencyCode>
+                <LegalMonetaryTotal>
+                    <PayableAmount>61387.20</PayableAmount>
+                    <PayableAmountCurr>2520.00</PayableAmountCurr>
+                </LegalMonetaryTotal>
+            </Invoice>';
+        $pdfBytes = $this->wrapIsdocInPdf($isdocXml);
+
+        $r = $this->extractor->extract($pdfBytes);
+        $this->assertSame(2520.00, $r['total']);
+        $this->assertSame('isdoc', $r['source']);
+    }
+
+    public function testTryIsdoc_foreignCurrencyFallsBackToBaseWhenNoCurr(): void
+    {
+        // Non-konformní cizoměnový export: cizí hodnota zapsaná rovnou do base
+        // PayableAmount, žádné *Curr → fallback na base je správný (= EUR hodnota).
+        $isdocXml = '<?xml version="1.0"?>
+            <Invoice xmlns="http://isdoc.cz/namespace/2013">
+                <LocalCurrencyCode>CZK</LocalCurrencyCode>
+                <ForeignCurrencyCode>EUR</ForeignCurrencyCode>
+                <LegalMonetaryTotal>
+                    <PayableAmount>2520.00</PayableAmount>
+                </LegalMonetaryTotal>
+            </Invoice>';
+        $pdfBytes = $this->wrapIsdocInPdf($isdocXml);
+
+        $r = $this->extractor->extract($pdfBytes);
+        $this->assertSame(2520.00, $r['total']);
         $this->assertSame('isdoc', $r['source']);
     }
 
@@ -146,7 +186,7 @@ final class PdfTotalExtractorTest extends TestCase
             <Invoice xmlns="http://isdoc.cz/namespace/2013">
                 <ID>TEST-001</ID>
                 <LegalMonetaryTotal>
-                    <PayableRoundedAmount>' . $amount . '</PayableRoundedAmount>
+                    <PayableAmount>' . $amount . '</PayableAmount>
                 </LegalMonetaryTotal>
             </Invoice>';
     }
