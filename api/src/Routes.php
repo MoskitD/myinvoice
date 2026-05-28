@@ -472,6 +472,11 @@ final class Routes
         // Background joby (rozbalení ZIP importu / ZIP export)
         $app->post  ('/api/documents/zip-import',     [DocumentJobsAction::class, 'zipImport']);
         $app->post  ('/api/documents/export',         [DocumentJobsAction::class, 'export']);
+        // Chunkovaný upload (obchází PHP post_max_size) — velký ZIP / složka / velký soubor
+        $app->post  ('/api/documents/upload/start',       [DocumentJobsAction::class, 'uploadStart']);
+        $app->post  ('/api/documents/upload/chunk-bytes', [DocumentJobsAction::class, 'uploadChunkBytes']);
+        $app->post  ('/api/documents/upload/chunk-files', [DocumentJobsAction::class, 'uploadChunkFiles']);
+        $app->post  ('/api/documents/upload/finish',      [DocumentJobsAction::class, 'uploadFinish']);
         $app->get   ('/api/documents/jobs',           [DocumentJobsAction::class, 'list']);
         $app->get   ('/api/documents/jobs/{id:[0-9]+}',          [DocumentJobsAction::class, 'status']);
         $app->get   ('/api/documents/jobs/{id:[0-9]+}/download', [DocumentJobsAction::class, 'download']);

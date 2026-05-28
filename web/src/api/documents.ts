@@ -60,6 +60,7 @@ export interface DocItem {
   links?: DocLink[]
   attachments?: DocItem[]
   dms_message?: DmsMessage | null
+  breadcrumb?: BreadcrumbItem[]
 }
 
 export interface BreadcrumbItem { id: number; name: string }
@@ -69,6 +70,7 @@ export interface FolderListing {
   folders: DocFolder[]
   documents: DocItem[]
   max_file_bytes: number
+  php_max_upload_bytes: number
 }
 
 export interface LinkSearchResult {
@@ -200,6 +202,26 @@ export const documentsApi = {
   },
   exportZip: (ids: number[]) =>
     api.post<{ job_id: number; status: string }>('/documents/export', { ids }).then(r => r.data),
+  // Chunkovaný upload (obchází PHP post_max_size) — velký ZIP / složka / velký soubor
+  uploadStart: (mode: 'zip-explode' | 'folder' | 'single', folderId: number | null, name?: string) =>
+    api.post<{ job_id: number; mode: string }>('/documents/upload/start', {
+      mode, folder_id: folderId, ...(name ? { name } : {}),
+    }).then(r => r.data),
+  uploadChunkBytes: (jobId: number, chunk: Blob) =>
+    api.post<{ size: number }>(`/documents/upload/chunk-bytes?job_id=${jobId}`, chunk, {
+      headers: { 'Content-Type': 'application/octet-stream' },
+    }).then(r => r.data),
+  uploadChunkFiles: (jobId: number, files: File[], relpaths: string[]) => {
+    const fd = new FormData()
+    for (const f of files) fd.append('file[]', f, f.name)
+    for (const p of relpaths) fd.append('relpaths[]', p)
+    return api.post<{ added: number }>(`/documents/upload/chunk-files?job_id=${jobId}`, fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }).then(r => r.data)
+  },
+  uploadFinish: (jobId: number) =>
+    api.post<{ job_id: number }>('/documents/upload/finish', { job_id: jobId }).then(r => r.data),
+
   jobs: () => api.get<{ jobs: DocJob[] }>('/documents/jobs').then(r => r.data.jobs),
   job: (id: number) => api.get<DocJob>(`/documents/jobs/${id}`).then(r => r.data),
   cancelJob: (id: number) => api.post<{ ok: boolean }>(`/documents/jobs/${id}/cancel`).then(r => r.data),

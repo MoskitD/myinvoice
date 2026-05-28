@@ -51,11 +51,35 @@ final class DocumentsAction
         }
 
         return Json::ok($response, [
-            'breadcrumb'     => $this->breadcrumb($sid, $folderId),
-            'folders'        => $this->folders->listChildren($sid, $folderId),
-            'documents'      => $this->documents->listInFolder($sid, $folderId, $docType),
-            'max_file_bytes' => $this->storage->maxFileBytes(),
+            'breadcrumb'          => $this->breadcrumb($sid, $folderId),
+            'folders'             => $this->folders->listChildren($sid, $folderId),
+            'documents'           => $this->documents->listInFolder($sid, $folderId, $docType),
+            'max_file_bytes'      => $this->storage->maxFileBytes(),
+            'php_max_upload_bytes' => $this->phpUploadLimit(),
         ]);
+    }
+
+    /** Efektivní per-request limit PHP = min(post_max_size, upload_max_filesize); 0 = neomezeno. */
+    private function phpUploadLimit(): int
+    {
+        $post = $this->iniBytes((string) ini_get('post_max_size'));
+        $upload = $this->iniBytes((string) ini_get('upload_max_filesize'));
+        $vals = array_filter([$post, $upload], static fn(int $v): bool => $v > 0);
+        return $vals === [] ? 0 : min($vals);
+    }
+
+    private function iniBytes(string $v): int
+    {
+        $v = trim($v);
+        if ($v === '') return 0;
+        $unit = strtolower($v[strlen($v) - 1]);
+        $num = (int) $v;
+        return match ($unit) {
+            'g' => $num * 1024 * 1024 * 1024,
+            'm' => $num * 1024 * 1024,
+            'k' => $num * 1024,
+            default => $num,
+        };
     }
 
     /** GET /api/documents/{id} */
@@ -70,6 +94,7 @@ final class DocumentsAction
         $doc['tags']        = $this->tags->tagsForDocument($id);
         $doc['links']       = $this->links->linksForDocument($id, $sid);
         $doc['attachments'] = $this->documents->listChildren($id, $sid);
+        $doc['breadcrumb']  = $this->breadcrumb($sid, $doc['folder_id']);
         if ($doc['doc_type'] === 'zfo') {
             $doc['dms_message'] = $this->dms->findByDocument($id);
         }

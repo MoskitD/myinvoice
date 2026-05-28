@@ -26,6 +26,7 @@ const breadcrumb = ref<BreadcrumbItem[]>([])
 const folders = ref<DocFolder[]>([])
 const documents = ref<DocItem[]>([])
 const maxFileBytes = ref(50 * 1024 * 1024)
+const phpMaxUpload = ref(0) // efektivní PHP per-request limit (0 = neznámý/neomezený)
 const loading = ref(false)
 
 const view = ref<'grid' | 'list'>((localStorage.getItem('documents.view') as 'grid' | 'list') || 'grid')
@@ -107,6 +108,7 @@ async function loadListing() {
     folders.value = r.folders
     documents.value = r.documents
     maxFileBytes.value = r.max_file_bytes
+    phpMaxUpload.value = r.php_max_upload_bytes ?? 0
   } finally {
     loading.value = false
   }
@@ -269,40 +271,95 @@ async function dismissJob(j: DocJob) {
   jobs.value = jobs.value.filter(x => x.id !== j.id)
 }
 
+// Bezpečný limit pro jeden HTTP request (90 % z PHP post_max_size, fallback 24 MB).
+// Větší soubory/dávky posíláme chunkovaně, takže PHP limit neobejdeme jen tušíme.
+function requestLimit(): number {
+  return phpMaxUpload.value > 0 ? Math.floor(phpMaxUpload.value * 0.9) : 24 * 1024 * 1024
+}
+/** Nahraje jeden velký soubor po bytech do staging jobu (chunk ≤ PHP limit). */
+async function uploadBlobInChunks(jobId: number, file: File) {
+  const chunk = Math.max(256 * 1024, Math.min(8 * 1024 * 1024, requestLimit()))
+  for (let off = 0; off < file.size || off === 0; off += chunk) {
+    await documentsApi.uploadChunkBytes(jobId, file.slice(off, off + chunk))
+    uploadPct.value = Math.min(100, Math.round(((off + chunk) / Math.max(1, file.size)) * 100))
+    if (file.size === 0) break
+  }
+}
+
+async function chunkedZipImport(file: File) {
+  const { job_id } = await documentsApi.uploadStart('zip-explode', folderId.value)
+  await uploadBlobInChunks(job_id, file)
+  await documentsApi.uploadFinish(job_id)
+  toast.success(t('documents.zip_job_started', { name: file.name }))
+}
+
+async function chunkedSingle(file: File) {
+  const { job_id } = await documentsApi.uploadStart('single', folderId.value, file.name)
+  await uploadBlobInChunks(job_id, file)
+  await documentsApi.uploadFinish(job_id)
+}
+
+async function chunkedFolderImport(files: { file: File; path: string }[]) {
+  const { job_id } = await documentsApi.uploadStart('folder', folderId.value)
+  const limit = requestLimit()
+  let batch: File[] = [], paths: string[] = [], size = 0, sent = 0
+  const flush = async () => {
+    if (!batch.length) return
+    await documentsApi.uploadChunkFiles(job_id, batch, paths)
+    sent += batch.length
+    uploadPct.value = Math.min(100, Math.round((sent / files.length) * 100))
+    batch = []; paths = []; size = 0
+  }
+  for (const f of files) {
+    if (batch.length >= 50 || (size + f.file.size > limit && batch.length)) await flush()
+    batch.push(f.file); paths.push(f.path); size += f.file.size
+  }
+  await flush()
+  await documentsApi.uploadFinish(job_id)
+}
+
 async function uploadFiles(files: { file: File; path: string }[]) {
   if (files.length === 0) return
-  const tooBig = files.find(f => f.file.size > maxFileBytes.value)
-  if (tooBig) {
-    toast.error(t('documents.too_large_hint', { mb: Math.round(maxFileBytes.value / 1024 / 1024) }))
-  }
-
-  // ZIP v režimu „rozbalit" → background job (rozbalení běží na pozadí).
-  if (zipMode.value === 'explode') {
-    const isZip = (n: string) => n.toLowerCase().endsWith('.zip')
-    const zips = files.filter(f => isZip(f.file.name))
-    files = files.filter(f => !isZip(f.file.name))
-    for (const z of zips) {
-      try {
-        await documentsApi.zipImport(z.file, folderId.value)
-        toast.success(t('documents.zip_job_started', { name: z.file.name }))
-      } catch {
-        toast.error(t('documents.upload_failed'))
-      }
-    }
-    if (zips.length) await loadJobs()
-    if (files.length === 0) return
-  }
-
   uploading.value = true
   uploadPct.value = 0
+  let usedJob = false
   try {
-    const r = await documentsApi.upload(
-      files.map(f => f.file),
-      { folderId: folderId.value, zipMode: zipMode.value, relpaths: files.map(f => f.path) },
-      pct => { uploadPct.value = pct },
-    )
-    toast.success(t('documents.upload_done', { n: r.created }))
-    await loadListing()
+    const limit = requestLimit()
+
+    // 1) ZIP v režimu „rozbalit" → chunkovaný zip job (zvládne i velký archiv).
+    if (zipMode.value === 'explode') {
+      const isZip = (n: string) => n.toLowerCase().endsWith('.zip')
+      const zips = files.filter(f => isZip(f.file.name))
+      files = files.filter(f => !isZip(f.file.name))
+      for (const z of zips) { await chunkedZipImport(z.file); usedJob = true }
+      if (files.length === 0) { if (usedJob) await loadJobs(); return }
+    }
+
+    // 2) Velké jednotlivé soubory (> bezpečný request limit) → chunkovaný single job.
+    const big = files.filter(f => f.file.size > limit)
+    files = files.filter(f => f.file.size <= limit)
+    for (const b of big) { await chunkedSingle(b.file); usedJob = true }
+
+    // 3) Složka (relativní cesty) / hodně souborů / velký součet → chunkovaný folder job.
+    const total = files.reduce((s, f) => s + f.file.size, 0)
+    const isFolder = files.some(f => f.path !== '')
+    if (files.length && (isFolder || files.length > 20 || total > limit)) {
+      await chunkedFolderImport(files)
+      files = []
+      usedJob = true
+    }
+
+    // 4) Zbytek (málo malých souborů) → přímý synchronní upload (rychlý, náhledy hned).
+    if (files.length) {
+      const r = await documentsApi.upload(
+        files.map(f => f.file),
+        { folderId: folderId.value, zipMode: zipMode.value, relpaths: files.map(f => f.path) },
+        pct => { uploadPct.value = pct },
+      )
+      toast.success(t('documents.upload_done', { n: r.created }))
+      await loadListing()
+    }
+    if (usedJob) { toast.success(t('documents.upload_job_started')); await loadJobs() }
   } catch {
     toast.error(t('documents.upload_failed'))
   } finally {
@@ -446,7 +503,7 @@ onUnmounted(() => { if (jobTimer) clearInterval(jobTimer) })
       <span>{{ t('documents.zip_mode') }}:</span>
       <label class="inline-flex items-center gap-1 cursor-pointer"><input type="radio" value="explode" v-model="zipMode" /> {{ t('documents.zip_explode') }}</label>
       <label class="inline-flex items-center gap-1 cursor-pointer"><input type="radio" value="keep" v-model="zipMode" /> {{ t('documents.zip_keep') }}</label>
-      <span class="text-neutral-400">· {{ t('documents.too_large_hint', { mb: Math.round(maxFileBytes / 1024 / 1024) }) }}</span>
+      <span class="text-neutral-400" :title="phpMaxUpload ? t('documents.php_limit_note', { mb: Math.round(phpMaxUpload / 1024 / 1024) }) : ''">· {{ t('documents.limit_info', { mb: Math.round(maxFileBytes / 1024 / 1024) }) }}</span>
       <span class="ml-auto inline-flex items-center gap-1 text-neutral-400">
         <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 0 1-.88-7.9A5 5 0 0 1 15.9 6.1 4.5 4.5 0 0 1 17 15M12 12v8m-3-3l3 3 3-3" /></svg>
         {{ t('documents.drop_here') }}
@@ -548,21 +605,21 @@ onUnmounted(() => { if (jobTimer) clearInterval(jobTimer) })
         </button>
       </div>
 
-      <!-- breadcrumb -->
-      <nav v-if="!tagFilter" class="flex items-center gap-1 text-sm mb-3 flex-wrap">
+      <!-- breadcrumb (pilulky) -->
+      <nav v-if="!tagFilter" class="flex items-center gap-1.5 text-sm mb-3 flex-wrap">
         <button
           type="button"
-          :class="['cursor-pointer inline-flex items-center gap-1 px-2 h-7 rounded-md', breadcrumb.length ? 'text-neutral-500 hover:bg-neutral-100' : 'text-neutral-800 font-medium']"
+          :class="['inline-flex items-center gap-1 px-2.5 h-7 rounded-full', breadcrumb.length ? 'cursor-pointer bg-neutral-100 text-neutral-600 hover:bg-neutral-200' : 'bg-primary-50 text-primary-700 font-medium']"
           @click="openFolder(null)"
         >
           <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 12l9-9 9 9M5 10v10h14V10" /></svg>
           {{ t('documents.root') }}
         </button>
         <template v-for="(b, idx) in breadcrumb" :key="b.id">
-          <svg class="w-4 h-4 text-neutral-300 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" /></svg>
+          <svg class="w-3.5 h-3.5 text-neutral-300 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" /></svg>
           <button
             type="button"
-            :class="['px-2 h-7 rounded-md truncate max-w-[200px]', idx === breadcrumb.length - 1 ? 'text-neutral-800 font-medium' : 'cursor-pointer text-neutral-500 hover:bg-neutral-100']"
+            :class="['px-2.5 h-7 rounded-full truncate max-w-[220px]', idx === breadcrumb.length - 1 ? 'bg-primary-50 text-primary-700 font-medium' : 'cursor-pointer bg-neutral-100 text-neutral-600 hover:bg-neutral-200']"
             @click="openFolder(b.id)"
           >{{ b.name }}</button>
         </template>

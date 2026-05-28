@@ -28,7 +28,9 @@ final class DocumentJobsAction
 {
     use DocumentActionTrait;
 
-    private const SOURCES = ['document_zip_import', 'document_zip_export'];
+    private const SOURCES = ['document_zip_import', 'document_zip_export', 'document_folder_import'];
+    /** Strop akumulovaného chunkovaného souboru (anti-DoS). */
+    private const MAX_CHUNKED_BYTES = 1024 * 1024 * 1024; // 1 GiB
 
     public function __construct(
         private readonly ImportJobRepository $jobs,
@@ -101,6 +103,134 @@ final class DocumentJobsAction
         $this->logger->log('document.zip_export_started', $userId, 'document', null,
             ['job_id' => $jobId, 'count' => count($ids)], $this->clientIp($request), $request->getHeaderLine('User-Agent'), $sid);
 
+        return Json::ok($response, ['job_id' => $jobId, 'status' => 'queued']);
+    }
+
+    // ───────────────── Chunkovaný upload (obchází PHP post_max_size) ─────────────────
+
+    private function stagingDir(int $sid, int $jobId): string
+    {
+        return DocumentStorage::baseDir($sid) . '/_jobs/up-' . $jobId;
+    }
+
+    /** POST /api/documents/upload/start {mode: zip-explode|folder|single, folder_id, name?} */
+    public function uploadStart(Request $request, Response $response): Response
+    {
+        $sid = $this->supplierId($request);
+        if ($sid <= 0) return Json::error($response, 'no_supplier', 'Chybí kontext dodavatele.', 400);
+        $userId = $this->userId($request);
+        $body = (array) $request->getParsedBody();
+
+        $mode = (string) ($body['mode'] ?? '');
+        if (!in_array($mode, ['zip-explode', 'folder', 'single'], true)) {
+            return Json::error($response, 'bad_mode', 'Neplatný režim uploadu.', 400);
+        }
+        $folderId = $this->optInt($body['folder_id'] ?? null);
+        if ($folderId !== null && $this->folders->find($folderId, $sid) === null) {
+            return Json::error($response, 'folder_not_found', 'Cílová složka nenalezena.', 404);
+        }
+
+        $source = $mode === 'zip-explode' ? 'document_zip_import' : 'document_folder_import';
+        $params = ['folder_id' => $folderId, 'chunked' => true, 'mode' => $mode];
+        if ($mode === 'single') {
+            $params['single_name'] = mb_substr(trim((string) ($body['name'] ?? 'soubor')), 0, 255) ?: 'soubor';
+        }
+        $jobId = $this->jobs->create($sid, $source, $params, $userId ?? 0);
+
+        $staging = $this->stagingDir($sid, $jobId);
+        if (!is_dir($staging) && !@mkdir($staging, 0755, true) && !is_dir($staging)) {
+            return Json::error($response, 'storage_not_writable', 'Úložiště jobů není zapisovatelné.', 500);
+        }
+        return Json::ok($response, ['job_id' => $jobId, 'mode' => $mode]);
+    }
+
+    /** POST /api/documents/upload/chunk-bytes?job_id=N  (raw octet-stream chunk) — zip-explode/single. */
+    public function uploadChunkBytes(Request $request, Response $response): Response
+    {
+        $sid = $this->supplierId($request);
+        $jobId = (int) ($request->getQueryParams()['job_id'] ?? 0);
+        $job = $this->jobs->find($jobId, $sid);
+        if ($job === null || ($job['status'] ?? '') !== 'queued' || !in_array($job['source'], self::SOURCES, true)) {
+            return Json::error($response, 'bad_job', 'Neplatný nebo již dokončený job.', 409);
+        }
+        $staging = $this->stagingDir($sid, $jobId);
+        if (!is_dir($staging)) return Json::error($response, 'no_staging', 'Staging nenalezen.', 409);
+
+        $blob = $staging . '/blob';
+        $data = (string) $request->getBody();
+        if ($data !== '') {
+            if (@file_put_contents($blob, $data, FILE_APPEND) === false) {
+                return Json::error($response, 'write_failed', 'Zápis chunku selhal.', 500);
+            }
+        }
+        if ((int) @filesize($blob) > self::MAX_CHUNKED_BYTES) {
+            @unlink($blob);
+            return Json::error($response, 'too_large', 'Soubor je příliš velký.', 413);
+        }
+        return Json::ok($response, ['size' => (int) @filesize($blob)]);
+    }
+
+    /** POST /api/documents/upload/chunk-files?job_id=N  (multipart file[]+relpaths[]) — folder. */
+    public function uploadChunkFiles(Request $request, Response $response): Response
+    {
+        $sid = $this->supplierId($request);
+        $jobId = (int) ($request->getQueryParams()['job_id'] ?? 0);
+        $job = $this->jobs->find($jobId, $sid);
+        if ($job === null || ($job['status'] ?? '') !== 'queued' || $job['source'] !== 'document_folder_import') {
+            return Json::error($response, 'bad_job', 'Neplatný nebo již dokončený job.', 409);
+        }
+        $staging = $this->stagingDir($sid, $jobId);
+        if (!is_dir($staging)) return Json::error($response, 'no_staging', 'Staging nenalezen.', 409);
+
+        $body = (array) $request->getParsedBody();
+        $relpaths = isset($body['relpaths']) && is_array($body['relpaths']) ? array_values($body['relpaths']) : [];
+        $files = $request->getUploadedFiles();
+        $list = isset($files['file']) ? (is_array($files['file']) ? array_values($files['file']) : [$files['file']]) : [];
+
+        $added = 0;
+        $manifest = $staging . '/manifest.jsonl';
+        foreach ($list as $idx => $file) {
+            if (!$file instanceof UploadedFileInterface || $file->getError() !== UPLOAD_ERR_OK) continue;
+            $name = trim((string) $file->getClientFilename());
+            if ($name === '') continue;
+            $part = $staging . '/p' . bin2hex(random_bytes(8));
+            try { $file->moveTo($part); } catch (\Throwable) { continue; }
+            $line = json_encode([
+                'f' => basename($part),
+                'n' => $name,
+                'p' => isset($relpaths[$idx]) ? (string) $relpaths[$idx] : '',
+            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            @file_put_contents($manifest, $line . "\n", FILE_APPEND);
+            $added++;
+        }
+        return Json::ok($response, ['added' => $added]);
+    }
+
+    /** POST /api/documents/upload/finish {job_id} — spustí worker. */
+    public function uploadFinish(Request $request, Response $response): Response
+    {
+        $sid = $this->supplierId($request);
+        $body = (array) $request->getParsedBody();
+        $jobId = (int) ($body['job_id'] ?? $request->getQueryParams()['job_id'] ?? 0);
+        $job = $this->jobs->find($jobId, $sid);
+        if ($job === null || ($job['status'] ?? '') !== 'queued' || !in_array($job['source'], self::SOURCES, true)) {
+            return Json::error($response, 'bad_job', 'Neplatný nebo již dokončený job.', 409);
+        }
+        $staging = $this->stagingDir($sid, $jobId);
+        $params = is_array($job['params'] ?? null) ? $job['params'] : [];
+
+        // 'single' režim: jediný soubor po bytech → zapiš 1řádkový manifest na blob.
+        if (($params['mode'] ?? '') === 'single' && !empty($params['single_name'])
+            && is_file($staging . '/blob') && !is_file($staging . '/manifest.jsonl')) {
+            @file_put_contents($staging . '/manifest.jsonl', json_encode(
+                ['f' => 'blob', 'n' => (string) $params['single_name'], 'p' => ''],
+                JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES,
+            ) . "\n");
+        }
+
+        $this->spawnWorker($jobId);
+        $this->logger->log('document.chunked_upload_finished', $this->userId($request), 'document', null,
+            ['job_id' => $jobId, 'source' => $job['source']], $this->clientIp($request), $request->getHeaderLine('User-Agent'), $sid);
         return Json::ok($response, ['job_id' => $jobId, 'status' => 'queued']);
     }
 

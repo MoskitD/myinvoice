@@ -74,7 +74,7 @@ try {
         $container->get(FakturoidImportService::class)->run($jobId);
     } elseif ($source === 'monthly_export') {
         $container->get(MonthlyExportService::class)->run($jobId);
-    } elseif ($source === 'document_zip_import' || $source === 'document_zip_export') {
+    } elseif ($source === 'document_zip_import' || $source === 'document_zip_export' || $source === 'document_folder_import') {
         $container->get(DocumentJobService::class)->run($jobId);
     } else {
         $jobs->appendLog($jobId, "Source '{$source}' není zatím podporován workerem.");

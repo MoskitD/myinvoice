@@ -40,6 +40,8 @@ final class DocumentJobService
         try {
             if ($source === 'document_zip_import') {
                 $this->runImport($jobId, $sid, $params, (int) ($job['created_by'] ?? 0) ?: null);
+            } elseif ($source === 'document_folder_import') {
+                $this->runFolderImport($jobId, $sid, $params, (int) ($job['created_by'] ?? 0) ?: null);
             } elseif ($source === 'document_zip_export') {
                 $this->runExport($jobId, $sid, $params);
             } else {
@@ -54,9 +56,13 @@ final class DocumentJobService
     private function runImport(int $jobId, int $sid, array $params, ?int $userId): void
     {
         $zipPath = (string) ($params['zip_path'] ?? '');
+        // Chunkovaný upload nemá zip_path v params — leží v _jobs/up-{jobId}/blob.
+        if ($zipPath === '') {
+            $zipPath = DocumentStorage::baseDir($sid) . '/_jobs/up-' . $jobId . '/blob';
+        }
         $folderId = isset($params['folder_id']) && $params['folder_id'] !== null ? (int) $params['folder_id'] : null;
 
-        if ($zipPath === '' || !is_file($zipPath)) {
+        if (!is_file($zipPath)) {
             $this->jobs->markFailed($jobId, 'ZIP soubor jobu nenalezen.');
             return;
         }
@@ -106,6 +112,81 @@ final class DocumentJobService
         $this->jobs->appendLog($jobId, 'Hotovo: ' . count($res['created_ids']) . ' souborů, '
             . count($res['skipped']) . ' přeskočeno.');
         $this->jobs->markCompleted($jobId);
+    }
+
+    /**
+     * Upload celé složky: chunked nahrané soubory leží ve staging dir + manifest.jsonl
+     * (po řádcích {f: staged_name, n: original_name, p: rel_dir}). Zpracujeme je stejně
+     * jako běžný upload (vč. ZFO auto-rozbalení), s rekonstrukcí stromu z relativní cesty.
+     *
+     * @param array<string,mixed> $params
+     */
+    private function runFolderImport(int $jobId, int $sid, array $params, ?int $userId): void
+    {
+        $staging = (string) ($params['staging_dir'] ?? '');
+        // Chunkovaný upload: staging je _jobs/up-{jobId}.
+        if ($staging === '') {
+            $staging = DocumentStorage::baseDir($sid) . '/_jobs/up-' . $jobId;
+        }
+        $staging = rtrim($staging, '/\\');
+        $folderId = isset($params['folder_id']) && $params['folder_id'] !== null ? (int) $params['folder_id'] : null;
+        $manifest = $staging . '/manifest.jsonl';
+
+        if (!is_dir($staging) || !is_file($manifest)) {
+            $this->jobs->markFailed($jobId, 'Staging složky jobu nenalezen.');
+            return;
+        }
+
+        $lines = file($manifest, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [];
+        $total = count($lines);
+        $this->jobs->updateProgress($jobId, ['total_items' => $total, 'current_step' => 'Importuji soubory']);
+        $this->jobs->appendLog($jobId, 'Importuji ' . $total . ' souborů ze složky…');
+
+        $created = 0;
+        $skipped = 0;
+        $processed = 0;
+        foreach ($lines as $line) {
+            if ($processed % self::CANCEL_CHECK_EVERY === 0 && $this->jobs->isCancelRequested($jobId)) {
+                $this->cleanupStaging($staging);
+                $this->jobs->markCancelled($jobId);
+                return;
+            }
+            $processed++;
+            $e = json_decode($line, true);
+            if (!is_array($e)) continue;
+
+            $staged = $staging . '/' . basename((string) ($e['f'] ?? ''));
+            if (!is_file($staged)) { $skipped++; continue; }
+
+            $segments = array_values(array_filter(
+                array_map([$this->storage, 'sanitizeFilename'], explode('/', trim(str_replace('\\', '/', (string) ($e['p'] ?? '')), '/'))),
+                static fn(string $s): bool => $s !== '' && $s !== '.' && $s !== '..',
+            ));
+            $targetFolder = $this->ingest->ensureFolderPath($sid, $folderId, $segments, $userId);
+
+            try {
+                $res = $this->ingest->ingestUploadedTemp($staged, $sid, $targetFolder, (string) ($e['n'] ?? 'dokument'), $userId, 'keep');
+                $created += count($res['created_ids']);
+                $skipped += count($res['skipped']);
+            } catch (DocumentException) {
+                @unlink($staged);
+                $skipped++;
+            }
+            $this->jobs->updateProgress($jobId, ['processed' => $processed, 'created_count' => $created, 'skipped_count' => $skipped]);
+        }
+
+        $this->cleanupStaging($staging);
+        $this->jobs->appendLog($jobId, 'Hotovo: ' . $created . ' souborů, ' . $skipped . ' přeskočeno.');
+        $this->jobs->markCompleted($jobId);
+    }
+
+    private function cleanupStaging(string $dir): void
+    {
+        if ($dir === '' || !is_dir($dir)) return;
+        foreach (glob($dir . '/*') ?: [] as $f) {
+            if (is_file($f)) @unlink($f);
+        }
+        @rmdir($dir);
     }
 
     /** @param array<string,mixed> $params */

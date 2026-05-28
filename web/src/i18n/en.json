@@ -68,6 +68,9 @@
     "upload_done": "Uploaded {n} files",
     "upload_failed": "Upload failed",
     "too_large_hint": "Maximum file size: {mb} MiB",
+    "limit_info": "Max per file: {mb} MiB · large files and folders upload in the background",
+    "php_limit_note": "Server (PHP) per-request limit: {mb} MiB — larger uploads are sent in chunks.",
+    "upload_job_started": "Upload is running in the background (see jobs panel)",
     "search_no_results": "Nothing found",
     "search_hint": "Type at least 2 characters",
     "dms": {

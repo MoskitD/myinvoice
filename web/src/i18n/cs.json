@@ -68,6 +68,9 @@
     "upload_done": "Nahráno {n} souborů",
     "upload_failed": "Nahrání selhalo",
     "too_large_hint": "Maximální velikost souboru: {mb} MiB",
+    "limit_info": "Max na soubor: {mb} MiB · velké soubory a složky se nahrávají na pozadí",
+    "php_limit_note": "Limit serveru (PHP) na jeden požadavek: {mb} MiB — větší se nahrávají po částech.",
+    "upload_job_started": "Nahrávání běží na pozadí (viz panel úloh)",
     "search_no_results": "Nic nenalezeno",
     "search_hint": "Zadej alespoň 2 znaky",
     "dms": {

@@ -115,6 +115,10 @@ function showPreview(a: DocItem) {
 
 function entityLabel(tp: EntityType): string { return t(`documents.entity.${tp}`) }
 
+function goFolder(id: number | null) {
+  router.push({ name: 'documents', query: id ? { folder: String(id) } : {} })
+}
+
 function goEntity(l: { entity_type: EntityType; entity_id: number }) {
   const map: Record<EntityType, string> = {
     invoice: 'invoice-detail',
@@ -130,6 +134,20 @@ onMounted(load)
 
 <template>
   <div v-if="doc" class="space-y-4">
+    <!-- breadcrumb (pilulky) -->
+    <nav class="flex items-center gap-1.5 text-sm flex-wrap">
+      <button type="button" class="cursor-pointer inline-flex items-center gap-1 px-2.5 h-7 rounded-full bg-neutral-100 text-neutral-600 hover:bg-neutral-200" @click="goFolder(null)">
+        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 12l9-9 9 9M5 10v10h14V10" /></svg>
+        {{ t('documents.root') }}
+      </button>
+      <template v-for="b in (doc.breadcrumb ?? [])" :key="b.id">
+        <svg class="w-3.5 h-3.5 text-neutral-300 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" /></svg>
+        <button type="button" class="cursor-pointer px-2.5 h-7 rounded-full bg-neutral-100 text-neutral-600 hover:bg-neutral-200 truncate max-w-[200px]" @click="goFolder(b.id)">{{ b.name }}</button>
+      </template>
+      <svg class="w-3.5 h-3.5 text-neutral-300 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" /></svg>
+      <span class="px-2.5 h-7 inline-flex items-center rounded-full bg-primary-50 text-primary-700 font-medium truncate max-w-[260px]">{{ doc.title }}</span>
+    </nav>
+
     <!-- Header -->
     <div class="flex items-start gap-3">
       <button type="button" class="text-neutral-400 hover:text-neutral-700 mt-1" @click="router.back()">
