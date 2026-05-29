@@ -51,6 +51,9 @@ export interface Supplier {
   signing_tsa_url: string | null  // RFC 3161 TSA endpoint; null = PAdES-B bez razítka
   signing_reason: string          // důvod podpisu (default „Faktura")
   has_signing_cert?: boolean       // server flag (existence P12); heslo/cesta se NIKDY nevrací
+  signing_tsa_username: string | null // HTTP Basic auth k TSA serveru
+  signing_tsa_password?: string       // jen pro ODESLÁNÍ (uloží se šifrovaně); nikdy se nevrací
+  has_tsa_password?: boolean          // server flag (heslo k TSA nastaveno)
   // Tax settings pro EPO výkazy DPH/KH (migrace 0038, fáze 6)
   taxpayer_type?: 'fo' | 'po' | null
   vat_period?: 'monthly' | 'quarterly' | null

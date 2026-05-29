@@ -272,7 +272,7 @@ final class PdfSigner
         // Při jakékoli chybě TSA tiše degraduj na PAdES-B (timestamp je opt-in).
         if ($cfg->tsaUrl !== null && $cfg->tsaUrl !== '') {
             try {
-                $der = $this->addTimestamp($der, $cfg->tsaUrl);
+                $der = $this->addTimestamp($der, $cfg);
             } catch (\Throwable) {
                 // ponech $der (PAdES-B) — výpadek TSA nesmí shodit podpis (timestamp je opt-in)
             }
@@ -281,10 +281,10 @@ final class PdfSigner
     }
 
     /** Přidá do CMS signature-timestamp (id-aa-timeStampToken) nad hodnotou podpisu. */
-    private function addTimestamp(string $cmsDer, string $tsaUrl): string
+    private function addTimestamp(string $cmsDer, SigningConfig $cfg): string
     {
         $sigValue = $this->signatureValue($cmsDer);
-        $token = $this->requestTimestamp($sigValue, $tsaUrl);
+        $token = $this->requestTimestamp($sigValue, (string) $cfg->tsaUrl, $cfg->tsaUsername, $cfg->tsaPasswordEnc);
         return $this->insertTimestampToken($cmsDer, $token);
     }
 
@@ -305,8 +305,11 @@ final class PdfSigner
         return $sig;
     }
 
-    /** Pošle hash na TSA (RFC 3161), vrátí timeStampToken (ContentInfo DER). Timeout 5 s. */
-    private function requestTimestamp(string $data, string $tsaUrl): string
+    /**
+     * Pošle hash na TSA (RFC 3161), vrátí timeStampToken (ContentInfo DER). Timeout 5 s.
+     * Volitelná HTTP Basic auth (jméno + zašifrované heslo) pro produkční/kvalifikované TSA.
+     */
+    private function requestTimestamp(string $data, string $tsaUrl, ?string $username = null, string $passwordEnc = ''): string
     {
         $hash = hash('sha256', $data, true);
         // TimeStampReq: SEQ { version 1, messageImprint SEQ { alg SEQ{sha256,NULL}, OCTET hash }, certReq TRUE }
@@ -315,13 +318,19 @@ final class PdfSigner
         $tsq = Asn1::tlv(0x30, Asn1::tlv(0x02, chr(1)) . $msgImprint . Asn1::tlv(0x01, chr(0xFF)));
 
         $ch = curl_init($tsaUrl);
-        curl_setopt_array($ch, [
+        $opts = [
             CURLOPT_POST => true,
             CURLOPT_HTTPHEADER => ['Content-Type: application/timestamp-query'],
             CURLOPT_POSTFIELDS => $tsq,
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_TIMEOUT => 5,
-        ]);
+        ];
+        // HTTP Basic auth k TSA (jméno+heslo) — heslo dešifruj až tady
+        if ($username !== null && $username !== '') {
+            $opts[CURLOPT_HTTPAUTH] = CURLAUTH_BASIC;
+            $opts[CURLOPT_USERPWD] = $username . ':' . ($passwordEnc !== '' ? $this->secrets->decrypt($passwordEnc) : '');
+        }
+        curl_setopt_array($ch, $opts);
         $resp = curl_exec($ch);
         $err = curl_error($ch);
         curl_close($ch);

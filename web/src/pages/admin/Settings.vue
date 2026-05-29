@@ -254,6 +254,7 @@ const signingCert = ref<SigningCertMeta>({ has_cert: false })
 const certFileInput = ref<HTMLInputElement | null>(null)
 const certUploading = ref(false)
 const certPassword = ref('')
+const tsaPassword = ref('')  // heslo k TSA (HTTP Basic) — odešle se při uložení, do UI se nevrací
 
 async function loadSigningMeta() {
   try { signingCert.value = await settingsApi.getSigningCert() } catch { /* ignore */ }
@@ -263,12 +264,17 @@ async function loadSigningMeta() {
 async function saveSigning(silent = false) {
   if (!supplier.value) return
   try {
-    const updated = await settingsApi.updateSupplier({
+    const payload: any = {
       pdf_signing_enabled: supplier.value.pdf_signing_enabled,
       signing_tsa_url: supplier.value.signing_tsa_url || null,
       signing_reason: supplier.value.signing_reason || '',
-    })
+      signing_tsa_username: supplier.value.signing_tsa_username || null,
+    }
+    // heslo k TSA posíláme jen když ho uživatel zadal/změnil (jinak se nedotkneme)
+    if (tsaPassword.value !== '') payload.signing_tsa_password = tsaPassword.value
+    const updated = await settingsApi.updateSupplier(payload)
     supplier.value = { ...supplier.value, ...updated }
+    tsaPassword.value = ''
     if (!silent) toast.success(t('settings.signing_saved'))
   } catch (e: any) {
     toast.error(e?.response?.data?.error?.message || t('common.error'))
@@ -837,12 +843,22 @@ async function removeCurrency(c: CurrencyAccount) {
             </div>
           </div>
 
-          <!-- TSA URL -->
+          <!-- TSA URL + autentizace -->
           <div>
             <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('settings.signing_tsa') }}</label>
             <p class="text-xs text-neutral-500 mb-2">{{ t('settings.signing_tsa_hint') }}</p>
             <input v-model="supplier.signing_tsa_url" type="text" placeholder="http://tsa.cesnet.cz:3161/tsa"
               class="h-10 w-full max-w-md px-3 border border-neutral-300 rounded-md text-sm font-mono" />
+            <p class="text-xs text-neutral-500 mt-2 mb-1">{{ t('settings.signing_tsa_auth_hint') }}</p>
+            <div class="flex items-center gap-2">
+              <input v-model="supplier.signing_tsa_username" type="text" :placeholder="t('settings.signing_tsa_user')"
+                autocomplete="off"
+                class="h-9 w-44 px-3 border border-neutral-300 rounded-md text-sm" />
+              <input v-model="tsaPassword" type="password"
+                :placeholder="supplier.has_tsa_password ? t('settings.signing_tsa_pass_set') : t('settings.signing_tsa_pass')"
+                autocomplete="new-password"
+                class="h-9 w-44 px-3 border border-neutral-300 rounded-md text-sm" />
+            </div>
           </div>
 
           <!-- Důvod -->

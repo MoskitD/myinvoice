@@ -17,6 +17,8 @@ final class SigningConfig
         public readonly string $passwordEnc,
         public readonly ?string $tsaUrl,
         public readonly string $reason,
+        public readonly ?string $tsaUsername = null,
+        public readonly string $tsaPasswordEnc = '',
     ) {}
 
     /**
@@ -37,11 +39,14 @@ final class SigningConfig
             return null;
         }
         $tsa = $row['signing_tsa_url'] ?? null;
+        $tsaUser = $row['signing_tsa_username'] ?? null;
         return new self(
-            certPath:    $certPath,
-            passwordEnc: (string) ($row['signing_cert_password_enc'] ?? ''),
-            tsaUrl:      ($tsa !== null && $tsa !== '') ? (string) $tsa : null,
-            reason:      (string) ($row['signing_reason'] ?? '') ?: 'Faktura',
+            certPath:     $certPath,
+            passwordEnc:  (string) ($row['signing_cert_password_enc'] ?? ''),
+            tsaUrl:       ($tsa !== null && $tsa !== '') ? (string) $tsa : null,
+            reason:       (string) ($row['signing_reason'] ?? '') ?: 'Faktura',
+            tsaUsername:  ($tsaUser !== null && $tsaUser !== '') ? (string) $tsaUser : null,
+            tsaPasswordEnc: (string) ($row['signing_tsa_password_enc'] ?? ''),
         );
     }
 }
