@@ -325,7 +325,9 @@ const hasAnyData = computed(() =>
             {{ t('stats.vs_prev_year_full', { year: summary.prev_year }) }}
           </div>
           <div class="text-[11px] text-neutral-500 mt-2">
-            {{ t('stats.forecast_growth_hint', { trend: growthPct(f.growth_trend), short: growthPct(f.growth_short) }) }}
+            {{ f.prev_year_full > 0
+                ? t('stats.forecast_growth_hint', { trend: growthPct(f.growth_trend), short: growthPct(f.growth_short) })
+                : t('stats.forecast_runrate_hint') }}
           </div>
         </div>
 
@@ -411,8 +413,11 @@ const hasAnyData = computed(() =>
         </div>
       </div>
 
-      <!-- Top klienti pie YTD + loni -->
-      <div v-if="(summary.top_clients_ytd.length + summary.top_clients_prev_year.length) > 0"
+      <!-- Top klienti (pie) + Top zakázky (bar), YTD + loni — sloučeno do jednoho gridu:
+           když nejsou loňská data, „aktuální rok" dlaždice klientů a zakázek jdou vedle sebe
+           (auto-flow), jinak se řadí pod sebe (klienti 2 sloupce, pak zakázky 2 sloupce). -->
+      <div v-if="(summary.top_clients_ytd.length + summary.top_clients_prev_year.length) > 0
+                 || (projectStats && (projectStats.top_this_year.top.length + projectStats.top_prev_year.top.length) > 0)"
         class="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div v-if="summary.top_clients_ytd.length" class="bg-surface border border-neutral-200 rounded-lg p-5 shadow-sm">
           <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500 mb-4">
@@ -426,12 +431,7 @@ const hasAnyData = computed(() =>
           </h3>
           <TopClientsPieChart :clients="summary.top_clients_prev_year" />
         </div>
-      </div>
-
-      <!-- Top zakázky bar YTD + loni -->
-      <div v-if="projectStats && (projectStats.top_this_year.top.length + projectStats.top_prev_year.top.length) > 0"
-        class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div v-if="projectStats.top_this_year.top.length" class="bg-surface border border-neutral-200 rounded-lg p-5 shadow-sm">
+        <div v-if="projectStats?.top_this_year.top.length" class="bg-surface border border-neutral-200 rounded-lg p-5 shadow-sm">
           <div class="flex items-baseline justify-between mb-3">
             <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500">
               {{ t('stats.top_projects_year', { year: projectStats.this_year }) }}
@@ -444,7 +444,7 @@ const hasAnyData = computed(() =>
             :greyed-indexes="topProjectChart('this').greyed"
             :currency="'CZK'" />
         </div>
-        <div v-if="projectStats.top_prev_year.top.length" class="bg-surface border border-neutral-200 rounded-lg p-5 shadow-sm">
+        <div v-if="projectStats?.top_prev_year.top.length" class="bg-surface border border-neutral-200 rounded-lg p-5 shadow-sm">
           <div class="flex items-baseline justify-between mb-3">
             <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500">
               {{ t('stats.top_projects_year', { year: projectStats.prev_year }) }}

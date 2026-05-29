@@ -1424,6 +1424,7 @@
     "forecast_hint": "Median of three estimates: run-rate, short-term growth and long-term trend.",
     "forecast_range": "range {low} – {high}",
     "forecast_growth_hint": "Median of 3 estimates · long-term trend +{trend} %/yr",
+    "forecast_runrate_hint": "No prior-year data — run-rate estimate (this year's pace).",
     "forecast_tooltip": "YTD {ytd} + last year's remainder {remainder}. Median of 3 projections (run-rate / short-term growth 12m {short} % / trend +{trend} %/yr). Range {low} – {high}.",
     "revenue_last_30d": "Last 30 days ({currency})",
     "last_30d_hint": "Rolling 30 days back",

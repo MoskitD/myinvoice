@@ -1465,7 +1465,7 @@ paths:
         - **rolling_12m** — plovoucí 12měsíční obrat per měna (+ 12m předtím
           pro YoY); relevantní pro DPH limit (2 mil. Kč),
         - **revenue_last_30d** — live obrat za posledních 30 dní per měna,
-        - **revenue_forecast** — predikce ročního obratu (growth-adjusted seasonality),
+        - **revenue_forecast** — predikce ročního obratu (medián tří projekcí: run-rate / krátkodobý růst / trend, vč. rozpětí),
         - **cashflow_ytd** — kumulativní inkasované platby letošek vs loni,
         - **cashflow_forecast** — co přiteče z neuhrazených v 30/60/90 dnech,
         - **due_buckets** — splatné dnes / tento týden / tento měsíc,
@@ -3885,21 +3885,26 @@ components:
         revenue_forecast:
           type: array
           description: |
-            Forecast ročního obratu — growth-adjusted seasonality.
+            Forecast ročního obratu — medián tří nezávislých projekcí (odolný vůči odlehlému signálu).
 
-            **Vzorec:** `forecast = YTD_letos + (prev_year_remainder × growth_ratio)`,
-            kde `growth_ratio = YTD_letos / YTD_loni_do_stejného_dne` (capnut na [0.3, 3.0]).
-            Tj. predikce zbytku roku z loňské sezonality, škálovaná aktuálním YoY růstem.
+            **Postup:** medián ze tří signálů —
+            (1) run-rate `ytd / uplynulé_dny × dní_v_roce`,
+            (2) sezonalita × krátkodobý růst `ytd + prev_year_remainder × growth_short`,
+            (3) sezonalita × dlouhodobý trend `ytd + prev_year_remainder × growth_trend`.
+            `forecast` je medián, `forecast_low`/`forecast_high` rozpětí (min/max projekcí).
+            Bez loňských dat (`prev_year_full = 0`) se použije pouze run-rate.
           items:
             type: object
             properties:
               currency: { type: string }
               ytd: { type: number, description: "Obrat letos Jan 1 – dnes" }
-              prev_year_ytd: { type: number, description: "Obrat loni Jan 1 – stejný den" }
               prev_year_remainder: { type: number, description: "Obrat loni od dneška do konce roku (sezonalita)" }
-              growth_ratio: { type: number, description: "YTD_letos / YTD_loni, cap [0.3, 3.0]" }
-              forecast: { type: number, description: "Predikovaný celoroční obrat" }
               prev_year_full: { type: number, description: "Celý loňský rok pro srovnání" }
+              growth_short: { type: number, description: "Krátkodobý růst: rolling 12m / předch. 12m, cap [0.5, 2.5]" }
+              growth_trend: { type: number, description: "Dlouhodobý trend: CAGR z posledních ≤5 let, cap [0.8, 1.8]" }
+              forecast: { type: number, description: "Medián tří projekcí — predikovaný celoroční obrat" }
+              forecast_low: { type: number, description: "Nejnižší ze tří projekcí (spodní hranice rozpětí)" }
+              forecast_high: { type: number, description: "Nejvyšší ze tří projekcí (horní hranice rozpětí)" }
         cashflow_ytd:
           type: array
           description: "Měsíční cash-flow (skutečné platby `paid_at`) letošek + minulý rok per měna. Doplňuje obrat o reálné inkaso."
