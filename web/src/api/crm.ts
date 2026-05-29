@@ -8,6 +8,12 @@ export interface CrmKpi {
   costs: number
   costs_net: number
   profit: number
+  /** CZK-přepočtené hodnoty (×exchange_rate) — pro agregaci „Vše" napříč měnami. */
+  revenue_czk: number
+  revenue_net_czk: number
+  costs_czk: number
+  costs_net_czk: number
+  profit_czk: number
   invoice_count: number
   purchase_count: number
   vat_output: number
@@ -111,6 +117,9 @@ export interface ExpenseCategoryRow {
   percent: number
 }
 
+/** Rozpad tržeb po kategoriích (CZK-normalizováno). Symetrie k ExpenseCategoryRow. */
+export type RevenueCategoryRow = ExpenseCategoryRow
+
 export interface ChurnRiskClient {
   client_id: number
   company_name: string
@@ -147,6 +156,8 @@ export const crmApi = {
     api.get<DsoResult>('/crm/dpo', { params: { months } }).then(r => r.data),
   expenseBreakdown: (months = 12, currency?: string) =>
     api.get<ExpenseCategoryRow[]>('/crm/expense-breakdown', { params: { months, currency } }).then(r => r.data),
+  revenueBreakdown: (months = 12, currency?: string) =>
+    api.get<RevenueCategoryRow[]>('/crm/revenue-breakdown', { params: { months, currency } }).then(r => r.data),
   churnRisk: (days = 60, limit = 20) =>
     api.get<ChurnRiskClient[]>('/crm/churn-risk', { params: { days, limit } }).then(r => r.data),
   recompute: () =>

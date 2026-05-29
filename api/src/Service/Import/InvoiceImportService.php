@@ -322,6 +322,10 @@ final class InvoiceImportService
         $paidAt = $isPaid ? ($taxDate ?: $inv['issue_date']) : null;
         $sentAt = (string) $inv['issue_date'] . ' 12:00:00';
 
+        // Výchozí kategorie tržby — default zakázky > klienta (sdílený helper, stejná
+        // logika jako createDraft / recurring), aby i importovaná faktura dostala kategorii.
+        $revenueCategoryId = InvoiceRepository::resolveDefaultRevenueCategoryId($this->db->pdo(), $clientId, $projectId);
+
         // Insert invoice
         $pdo = $this->db->pdo();
         $sql = 'INSERT INTO invoices
@@ -329,8 +333,8 @@ final class InvoiceImportService
              issue_date, tax_date, due_date, currency_id, exchange_rate, exchange_rate_date,
              reverse_charge, language,
              total_without_vat, total_vat, total_with_vat,
-             status, sent_at, paid_at, created_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?, ?, ?)';
+             status, sent_at, paid_at, revenue_category_id, created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?, ?, ?, ?)';
 
         $pdo->prepare($sql)->execute([
             $supplierId,
@@ -349,6 +353,7 @@ final class InvoiceImportService
             $status,
             $sentAt,
             $paidAt,
+            $revenueCategoryId,
             $userId,
         ]);
         $invoiceId = (int) $pdo->lastInsertId();

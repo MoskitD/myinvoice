@@ -153,6 +153,16 @@ export interface InvoiceSizeHistogram {
   total: number
 }
 
+/** Rozpad tržeb po kategoriích za 12 měsíců (CZK-normalizováno) — pro koláč na Stats. */
+export interface RevenueCategoryBreakdownItem {
+  category_id: number | null
+  code: string | null
+  label: string | null
+  total: number
+  count: number
+  percent: number
+}
+
 export interface DashboardSummary {
   kpi: DashboardKpi
   overdue: DashboardInvoiceItem[]
@@ -161,6 +171,7 @@ export interface DashboardSummary {
   top_clients_prev_year: TopClient[]
   top_clients_12m: TopClient[]
   revenue_by_month: RevenueByMonth[]
+  revenue_breakdown_12m: RevenueCategoryBreakdownItem[]
   purchase_costs_by_month: Array<{ ym: string; total: number }>
   revenue_by_year: RevenueByYear[]
   rolling_12m: Rolling12mRevenue[]

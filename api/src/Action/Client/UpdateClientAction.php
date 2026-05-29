@@ -45,10 +45,11 @@ final class UpdateClientAction
         $ip = $this->ipMatcher->clientIpFromRequest($request->getServerParams());
         $this->logger->log('client.updated', $user['id'] ?? null, 'client', $id, null, $ip, $request->getHeaderLine('User-Agent'));
 
-        // expense_category_backfilled = počet přijatých faktur, do kterých byla doplněna
-        // nově nastavená výchozí kategorie nákladu (frontend ukáže toast).
+        // *_category_backfilled = počet faktur, do kterých byla doplněna nově nastavená
+        // výchozí kategorie nákladu / tržby (frontend ukáže toast).
         $client = $this->repo->find($id) ?? [];
-        $client['expense_category_backfilled'] = $backfilled;
+        $client['expense_category_backfilled'] = $backfilled['expense'];
+        $client['revenue_category_backfilled'] = $backfilled['revenue'];
         return Json::ok($response, $client);
     }
 }

@@ -6,6 +6,8 @@ import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { projectsApi, type Project, type ProjectPayload, type BillingEmail } from '@/api/projects'
 import { clientsApi, type Client } from '@/api/clients'
 import { codebooksApi, type Currency } from '@/api/codebooks'
+import { revenueCategoriesApi, type RevenueCategory } from '@/api/revenueCategories'
+import { useToast } from '@/composables/useToast'
 
 /**
  * V `embedded` módu komponenta nečte route a vrací výsledek přes `@created`.
@@ -29,8 +31,10 @@ const isEdit = computed(() =>
 const projectId = computed(() => (isEdit.value ? Number(route.params.id) : null))
 const initialClientId = ref<number | null>(null)
 
+const toast = useToast()
 const client = ref<Client | null>(null)
 const currencies = ref<Currency[]>([])
+const revenueCategories = ref<RevenueCategory[]>([])
 const submitting = ref(false)
 const error = ref('')
 
@@ -49,6 +53,7 @@ const form = ref<ProjectPayload>({
   status: 'active',
   requires_work_report_approval: false,
   note: null,
+  default_revenue_category_id: null,
   billing_emails: [],
 })
 
@@ -86,6 +91,7 @@ const projectDuePreset = computed<ProjectDuePreset>({
 
 onMounted(async () => {
   currencies.value = await codebooksApi.currencies()
+  revenueCategories.value = await revenueCategoriesApi.list(false).catch(() => [] as RevenueCategory[])
   if (form.value.currency_id === 0) {
     const def = currencies.value.find(c => c.is_default && c.code === 'CZK') || currencies.value[0]
     if (def) form.value.currency_id = def.id
@@ -141,6 +147,7 @@ function sanitize(p: Project): Partial<ProjectPayload> {
     status: p.status,
     requires_work_report_approval: !!p.requires_work_report_approval,
     note: p.note ?? null,
+    default_revenue_category_id: p.default_revenue_category_id ?? null,
   }
 }
 
@@ -162,6 +169,10 @@ async function submit() {
       const { client_id, ...rest } = form.value
       void client_id
       const updated = await projectsApi.update(projectId.value, rest)
+      const revBackfilled = updated.revenue_category_backfilled ?? 0
+      if (revBackfilled > 0) {
+        toast.success(t('project.default_revenue_category_backfilled', { count: revBackfilled }))
+      }
       if (props.embedded) { emit('created', updated); return }
       router.push(`/projects/${projectId.value}`)
     } else {
@@ -301,6 +312,19 @@ async function submit() {
               <div class="text-xs text-neutral-500 mt-0.5">{{ t('project.requires_approval_hint') }}</div>
             </div>
           </label>
+        </div>
+
+        <!-- Výchozí kategorie tržby zakázky (přednost před klientem) -->
+        <div>
+          <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('project.default_revenue_category') }}</label>
+          <select v-model="form.default_revenue_category_id"
+            class="w-full h-10 px-3 border border-neutral-300 rounded-md bg-surface focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none">
+            <option :value="null">— {{ t('project.default_revenue_category_none') }} —</option>
+            <option v-for="c in revenueCategories" :key="c.id" :value="c.id">
+              {{ c.label }} ({{ c.code }})
+            </option>
+          </select>
+          <p class="text-xs text-neutral-500 mt-1">{{ t('project.default_revenue_category_hint') }}</p>
         </div>
 
         <div>

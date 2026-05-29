@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n'
 import { clientsApi, type ClientPayload, type Client } from '@/api/clients'
 import { codebooksApi, type Country, type Currency } from '@/api/codebooks'
 import { expenseCategoriesApi, type ExpenseCategory } from '@/api/expenseCategories'
+import { revenueCategoriesApi, type RevenueCategory } from '@/api/revenueCategories'
 import { useToast } from '@/composables/useToast'
 import { useSupplierStore } from '@/stores/supplier'
 
@@ -105,6 +106,7 @@ const form = ref<ClientPayload>({
   hourly_rate: 0,
   note: null,
   default_expense_category_id: null,
+  default_revenue_category_id: null,
   invoice_number_format: null,
   proforma_number_format: null,
   credit_note_number_format: null,
@@ -119,6 +121,7 @@ const lockVendor   = ref(false)  // true pokud má přijaté faktury
 const countries = ref<Country[]>([])
 const currencies = ref<Currency[]>([])
 const expenseCategories = ref<ExpenseCategory[]>([])
+const revenueCategories = ref<RevenueCategory[]>([])
 const submitting = ref(false)
 const error = ref('')
 const errors = ref<Record<string, string[]>>({})
@@ -129,14 +132,16 @@ const duplicateIc = ref<{ id: number; name: string } | null>(null)
 const duplicateDic = ref<{ id: number; name: string } | null>(null)
 
 onMounted(async () => {
-  const [c, cur, ec] = await Promise.all([
+  const [c, cur, ec, rc] = await Promise.all([
     codebooksApi.countries(),
     codebooksApi.currencies(),
     expenseCategoriesApi.list(false).catch(() => [] as ExpenseCategory[]),  // jen aktivní
+    revenueCategoriesApi.list(false).catch(() => [] as RevenueCategory[]),  // jen aktivní
   ])
   countries.value = c
   currencies.value = cur
   expenseCategories.value = ec
+  revenueCategories.value = rc
   if (form.value.currency_default_id === 0) {
     const def = cur.find(x => x.is_default && x.code === 'CZK') || cur[0]
     if (def) form.value.currency_default_id = def.id
@@ -175,6 +180,7 @@ function sanitize(c: Client): Partial<ClientPayload> {
     hourly_rate: c.hourly_rate ?? 0,
     note: c.note ?? null,
     default_expense_category_id: c.default_expense_category_id ?? null,
+    default_revenue_category_id: c.default_revenue_category_id ?? null,
     invoice_number_format: c.invoice_number_format ?? null,
     proforma_number_format: c.proforma_number_format ?? null,
     credit_note_number_format: c.credit_note_number_format ?? null,
@@ -267,6 +273,10 @@ async function submit() {
       const backfilled = updated.expense_category_backfilled ?? 0
       if (backfilled > 0) {
         toast.success(t('client.default_expense_category_backfilled', { count: backfilled }))
+      }
+      const revBackfilled = updated.revenue_category_backfilled ?? 0
+      if (revBackfilled > 0) {
+        toast.success(t('client.default_revenue_category_backfilled', { count: revBackfilled }))
       }
       if (props.embedded) { emit('created', updated); return }
       router.push(`/clients/${clientId.value}`)
@@ -496,6 +506,19 @@ async function submit() {
             </option>
           </select>
           <p class="text-xs text-neutral-500 mt-1">{{ t('client.default_expense_category_hint') }}</p>
+        </div>
+
+        <!-- Výchozí kategorie tržby (jen pro zákazníky) -->
+        <div v-if="form.is_customer" class="pt-3 border-t border-neutral-100">
+          <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('client.default_revenue_category') }}</label>
+          <select v-model="form.default_revenue_category_id"
+            class="w-full h-10 px-3 border border-neutral-300 rounded-md bg-surface focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none">
+            <option :value="null">— {{ t('client.default_revenue_category_none') }} —</option>
+            <option v-for="c in revenueCategories" :key="c.id" :value="c.id">
+              {{ c.label }} ({{ c.code }})
+            </option>
+          </select>
+          <p class="text-xs text-neutral-500 mt-1">{{ t('client.default_revenue_category_hint') }}</p>
         </div>
 
         <div>

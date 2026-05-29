@@ -61,6 +61,13 @@ export interface Invoice {
   language: 'cs' | 'en'
   note_above_items: string | null
   note_below_items: string | null
+  revenue_category_id: number | null
+  revenue_category_label?: string | null
+  revenue_category_code?: string | null
+  // Cross-link na související doklady (z find()): u proformy → vystavený daňový doklad;
+  // u dokladu s parent_invoice_id → rodič (proforma / původní faktura).
+  final_invoice?: { id: number; varsymbol: string | null; status: InvoiceStatus } | null
+  parent_invoice?: { id: number; varsymbol: string | null; status: InvoiceStatus; invoice_type: InvoiceType } | null
   recurring_template_id: number | null
   advance_paid_amount: number
   discount_percent: number
@@ -209,6 +216,7 @@ export interface InvoicePayload {
   varsymbol?: string | null
   vat_classification_code?: string | null
   revenue_category?: string | null
+  revenue_category_id?: number | null
   items: Array<{
     description: string
     quantity: number

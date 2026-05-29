@@ -288,6 +288,7 @@
     },
     "advance_link": {
       "title": "Advance invoice",
+      "title_settlement": "Advance settlement",
       "none": "Not linked to an advance.",
       "pair": "Link to advance",
       "linked_to": "Settles advance",
@@ -911,8 +912,14 @@
       "no_vat_class": "(auto-default by rate)",
       "vat_classification_hint": "Auto-assigned by VAT rate (21%→1, 12%→2, 0%→3, reverse→20).",
       "revenue_category": "Revenue category (optional)",
+      "revenue_category_none": "no category",
       "revenue_category_placeholder": "e.g. consulting, product, hosting",
-      "revenue_category_hint": "Free-form tag for business mix analysis in CRM."
+      "revenue_category_hint": "Category for revenue breakdown in CRM and stats. Managed in Codebooks."
+    },
+    "linked": {
+      "final_invoice": "Tax document for advance",
+      "proforma": "Advance (proforma) invoice",
+      "parent": "Original invoice"
     },
     "pdf_history": {
       "title": "PDF history",
@@ -1144,6 +1151,10 @@
     "default_expense_category_none": "no default category",
     "default_expense_category_hint": "Pre-filled on new received invoices from this vendor. On save it is also applied to all their existing invoices that have no category set.",
     "default_expense_category_backfilled": "Default category applied to {count} received invoices without a category.",
+    "default_revenue_category": "Default revenue category",
+    "default_revenue_category_none": "no default category",
+    "default_revenue_category_hint": "Pre-filled on new issued invoices for this customer. On save it is also applied to all their existing invoices that have no category set. The project category takes precedence.",
+    "default_revenue_category_backfilled": "Default revenue category applied to {count} issued invoices without a category.",
     "filter_category_all": "All categories",
     "create_first": "Create first",
     "company_name": "Company",
@@ -1290,7 +1301,11 @@
     "delete_failed": "Delete failed",
     "requires_approval": "Customer must approve work report",
     "requires_approval_badge": "Customer approval required",
-    "requires_approval_hint": "Invoice cannot be issued until the customer approves the work report via email. Once approved, the invoice is issued and sent automatically."
+    "requires_approval_hint": "Invoice cannot be issued until the customer approves the work report via email. Once approved, the invoice is issued and sent automatically.",
+    "default_revenue_category": "Default revenue category",
+    "default_revenue_category_none": "no default category",
+    "default_revenue_category_hint": "Pre-filled on new issued invoices for this project and takes PRECEDENCE over the customer category. On save it is also applied to all project invoices that have no category set.",
+    "default_revenue_category_backfilled": "Default revenue category applied to {count} project invoices without a category."
   },
   "bank": {
     "title": "Bank statements",
@@ -1407,6 +1422,10 @@
     "active_clients_hint": "(non-archived)",
     "revenue_by_year_table": "Revenue by year",
     "revenue_by_month_table": "Revenue by month (12)",
+    "revenue_breakdown": {
+      "title": "Revenue by category",
+      "uncategorized": "Uncategorized"
+    },
     "top_clients_table": "Top clients — {year}",
     "top_projects_table": "Top projects — {year}",
     "top_clients_12m_table": "Top clients — last 12 months",
@@ -1755,12 +1774,29 @@
     "archived_due_to_usage": "Category is in use — archived (hidden from pickers, history preserved).",
     "delete_confirm": "Delete category \"{label}\"? If already used, will be archived instead."
   },
+  "revenue_categories": {
+    "hint": "Revenue categories for issued invoices — used for breakdown in CRM and stats.",
+    "empty": "No categories. Create first and assign to issued invoices for better revenue insight.",
+    "new": "New category",
+    "new_title": "New revenue category",
+    "edit_title": "Edit category",
+    "code": "Code",
+    "code_hint": "Short ID (A-Z, 0-9, _, -), e.g. \"consulting\", \"product\"",
+    "label": "Label",
+    "display_order": "Order (sorting)",
+    "usage": "Usage",
+    "archive": "Archive (hide from pickers)",
+    "archived": "Archived",
+    "archived_due_to_usage": "Category is in use — archived (hidden from pickers, history preserved).",
+    "delete_confirm": "Delete category \"{label}\"? If already used, will be archived instead."
+  },
   "codebooks": {
     "title": "Codebooks",
     "subtitle": "Currencies + bank accounts, VAT rates, countries, units. Admin only.",
     "tab_currencies": "Currencies",
     "tab_vat": "VAT rates",
     "tab_expense_categories": "Expense categories",
+    "tab_revenue_categories": "Revenue categories",
     "tab_vat_classifications": "VAT classifications",
     "tab_countries": "Countries",
     "tab_units": "Units",
@@ -2188,6 +2224,7 @@
       "avg_reminders": "Avg reminders to paid"
     },
     "last_n_months": "Last {n} months",
+    "all_currencies": "All (CZK)",
     "period_chip": "{n} m",
     "period_label": "Period:",
     "kpi_section": "Overview — this month & year-to-date",
@@ -2270,6 +2307,12 @@
       "empty": "No received invoices in this period.",
       "uncategorized": "Uncategorized",
       "uncategorized_hint": "Assign expense categories in the received invoice editor — you'll see detailed breakdown."
+    },
+    "revenue_breakdown": {
+      "title": "Revenue by category",
+      "empty": "No issued invoices in this period.",
+      "uncategorized": "Uncategorized",
+      "uncategorized_hint": "Assign revenue categories in the issued invoice editor — you'll see detailed breakdown."
     },
     "churn": {
       "title": "Churn risk (60+ days without order)",

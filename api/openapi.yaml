@@ -2633,6 +2633,49 @@ paths:
       responses:
         '200': { description: Deleted/archived }
 
+  /api/v1/revenue-categories:
+    get:
+      tags: [Codebooks]
+      summary: Seznam kategorií tržeb
+      parameters: [{ $ref: '#/components/parameters/SupplierIdHeader' }]
+      responses:
+        '200': { description: List }
+    post:
+      tags: [Codebooks]
+      summary: Vytvoří kategorii tržby (admin)
+      parameters: [{ $ref: '#/components/parameters/SupplierIdHeader' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, label]
+              properties:
+                code: { type: string, maxLength: 20, pattern: '^[a-z0-9_-]+$' }
+                label: { type: string, maxLength: 100 }
+                display_order: { type: integer }
+      responses:
+        '201': { description: Created }
+
+  /api/v1/revenue-categories/{id}:
+    put:
+      tags: [Codebooks]
+      summary: Update kategorie tržby
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+        - $ref: '#/components/parameters/SupplierIdHeader'
+      responses:
+        '200': { description: OK }
+    delete:
+      tags: [Codebooks]
+      summary: Smaže (nebo archivuje pokud má reference) kategorii tržby
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+        - $ref: '#/components/parameters/SupplierIdHeader'
+      responses:
+        '200': { description: Deleted/archived }
+
   /api/v1/vat-classifications:
     get:
       tags: [Codebooks]

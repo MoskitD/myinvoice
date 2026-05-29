@@ -54,6 +54,7 @@ final class SummaryAction
             'top_clients_prev_year'  => $this->topClients($pdo, $prevYear, $sid, $isVatPayer),
             'top_clients_12m'        => $this->topClientsRolling12m($pdo, $sid, $isVatPayer),
             'revenue_by_month'       => $this->revenueByMonth($pdo, $sid, $isVatPayer),
+            'revenue_breakdown_12m'  => $this->revenueBreakdown12m($pdo, $sid, $isVatPayer),
             'purchase_costs_by_month'=> $this->purchaseCostsByMonth($pdo, $sid),
             'revenue_by_year'        => $revenueByYear,
             'rolling_12m'            => $this->rolling12mRevenue($pdo, $sid, $isVatPayer),
@@ -115,6 +116,42 @@ final class SummaryAction
             'total'         => round((float) $r['total'], 2),
             'invoice_count' => (int) $r['invoice_count'],
         ], $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: []);
+    }
+
+    /**
+     * Rozpad tržeb po kategoriích za posledních 12 měsíců (CZK-normalizováno přes
+     * exchange_rate, VAT-aware sloupec). Pro koláčový graf „Tržby podle kategorie"
+     * na stránce Tržby (Stats). Symetrie k expense_breakdown_12m (PurchaseSummaryAction).
+     *
+     * @return list<array{category_id:?int, code:?string, label:?string, total: float, count: int, percent: float}>
+     */
+    private function revenueBreakdown12m(\PDO $pdo, int $sid, bool $isVatPayer): array
+    {
+        $rev = $this->revenueCol($isVatPayer);
+        $sql = "SELECT i.revenue_category_id, rc.code, rc.label,
+                       SUM($rev * COALESCE(IF(cur.code = 'CZK', 1, i.exchange_rate), 1)) AS total,
+                       COUNT(*) AS cnt
+                  FROM invoices i
+                  JOIN currencies cur ON cur.id = i.currency_id
+             LEFT JOIN revenue_categories rc ON rc.id = i.revenue_category_id
+                 WHERE i.supplier_id = ?
+                   AND COALESCE(i.tax_date, i.issue_date) >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
+                   AND i.status IN ('issued', 'sent', 'reminded', 'paid')
+                   AND i.invoice_type IN ('invoice', 'credit_note')
+              GROUP BY i.revenue_category_id, rc.code, rc.label
+              ORDER BY total DESC";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$sid]);
+        $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+        $sum = array_sum(array_column($rows, 'total'));
+        return array_map(static fn (array $r) => [
+            'category_id' => $r['revenue_category_id'] !== null ? (int) $r['revenue_category_id'] : null,
+            'code'        => $r['code'] !== null ? (string) $r['code'] : null,
+            'label'       => $r['label'] !== null ? (string) $r['label'] : null,
+            'total'       => round((float) $r['total'], 2),
+            'count'       => (int) $r['cnt'],
+            'percent'     => $sum > 0 ? round(((float) $r['total'] / $sum) * 100, 1) : 0.0,
+        ], $rows);
     }
 
     /**

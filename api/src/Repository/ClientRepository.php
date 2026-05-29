@@ -145,7 +145,7 @@ final class ClientRepository
                        c.currency_default_id, cur.code AS currency_default,
                        c.reverse_charge, c.is_customer, c.is_vendor,
                        c.payment_due_default, c.payment_due_unit, c.hourly_rate,
-                       c.default_expense_category_id,
+                       c.default_expense_category_id, c.default_revenue_category_id,
                        c.archived_at, co.iso2 AS country_iso2,
                        (SELECT COUNT(*) FROM projects p WHERE p.client_id = c.id AND p.status = 'active' AND p.archived_at IS NULL) AS active_projects_count,
                        COALESCE(crc.revenue, 0) AS revenue,
@@ -232,14 +232,16 @@ final class ClientRepository
 
         $this->assertTemplatesUnique($supplierId, null, $data);
         $defaultExpenseCategoryId = $this->resolveExpenseCategoryId($data, $supplierId);
+        $defaultRevenueCategoryId = $this->resolveRevenueCategoryId($data, $supplierId);
 
         $sql = 'INSERT INTO clients
             (supplier_id, company_name, first_name, last_name, ic, dic, street, city, zip, country_id,
              main_email, phone, language, currency_default_id, reverse_charge,
              is_customer, is_vendor,
-             auto_send_reminders, payment_due_default, payment_due_unit, hourly_rate, note, default_expense_category_id,
+             auto_send_reminders, payment_due_default, payment_due_unit, hourly_rate, note,
+             default_expense_category_id, default_revenue_category_id,
              invoice_number_format, proforma_number_format, credit_note_number_format, invoice_number_period)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
         $stmt = $this->db->pdo()->prepare($sql);
         $stmt->execute([
             $supplierId,
@@ -265,6 +267,7 @@ final class ClientRepository
             (float) ($data['hourly_rate'] ?? 0),
             $this->nullable($data, 'note'),
             $defaultExpenseCategoryId,
+            $defaultRevenueCategoryId,
             $this->nullableTemplate($data, 'invoice_number_format'),
             $this->nullableTemplate($data, 'proforma_number_format'),
             $this->nullableTemplate($data, 'credit_note_number_format'),
@@ -297,15 +300,18 @@ final class ClientRepository
     }
 
     /**
-     * Vrací počet přijatých faktur, do kterých byla doplněna výchozí kategorie
-     * (backfill při nastavení/změně default_expense_category_id). 0 = žádný backfill.
+     * Vrací počty dokladů, do kterých byla doplněna výchozí kategorie (backfill
+     * při nastavení/změně default_expense_category_id / default_revenue_category_id):
+     *   ['expense' => počet přijatých faktur, 'revenue' => počet vydaných faktur].
+     *
+     * @return array{expense:int, revenue:int}
      */
-    public function update(int $id, array $data): int
+    public function update(int $id, array $data): array
     {
         $pdo = $this->db->pdo();
 
         // Klient nemůže měnit supplier — odvodíme z aktuálního DB záznamu pro currency lookup
-        $stmt = $pdo->prepare('SELECT supplier_id, is_customer, is_vendor, default_expense_category_id FROM clients WHERE id = ?');
+        $stmt = $pdo->prepare('SELECT supplier_id, is_customer, is_vendor, default_expense_category_id, default_revenue_category_id FROM clients WHERE id = ?');
         $stmt->execute([$id]);
         $current = $stmt->fetch(PDO::FETCH_ASSOC);
         if ($current === false) {
@@ -314,6 +320,9 @@ final class ClientRepository
         $supplierId = (int) $current['supplier_id'];
         $oldDefaultCategory = $current['default_expense_category_id'] !== null
             ? (int) $current['default_expense_category_id']
+            : null;
+        $oldDefaultRevenueCategory = $current['default_revenue_category_id'] !== null
+            ? (int) $current['default_revenue_category_id']
             : null;
 
         // Role flagy — pokud chybí v payloadu, zachovat aktuální hodnotu (BC).
@@ -357,6 +366,9 @@ final class ClientRepository
         $newDefaultCategory = array_key_exists('default_expense_category_id', $data)
             ? $this->resolveExpenseCategoryId($data, $supplierId)
             : $oldDefaultCategory;
+        $newDefaultRevenueCategory = array_key_exists('default_revenue_category_id', $data)
+            ? $this->resolveRevenueCategoryId($data, $supplierId)
+            : $oldDefaultRevenueCategory;
 
         $sql = 'UPDATE clients SET
                 company_name = ?, first_name = ?, last_name = ?, ic = ?, dic = ?,
@@ -364,7 +376,7 @@ final class ClientRepository
                 main_email = ?, phone = ?, language = ?, currency_default_id = ?,
                 reverse_charge = ?, is_customer = ?, is_vendor = ?,
                 auto_send_reminders = ?, payment_due_default = ?, payment_due_unit = ?,
-                hourly_rate = ?, note = ?, default_expense_category_id = ?,
+                hourly_rate = ?, note = ?, default_expense_category_id = ?, default_revenue_category_id = ?,
                 invoice_number_format = ?, proforma_number_format = ?,
                 credit_note_number_format = ?, invoice_number_period = ?
                 WHERE id = ?';
@@ -392,6 +404,7 @@ final class ClientRepository
             (float) ($data['hourly_rate'] ?? 0),
             $this->nullable($data, 'note'),
             $newDefaultCategory,
+            $newDefaultRevenueCategory,
             $this->nullableTemplate($data, 'invoice_number_format'),
             $this->nullableTemplate($data, 'proforma_number_format'),
             $this->nullableTemplate($data, 'credit_note_number_format'),
@@ -400,8 +413,9 @@ final class ClientRepository
         ]);
 
         // Backfill: pokud byla nastavena/změněna výchozí kategorie, doplnit ji do všech
-        // přijatých faktur tohoto dodavatele, které kategorii nemají vyplněnou.
-        // Faktury s již vybranou kategorií zůstávají beze změny ("pokud tam není zvoleno jiné").
+        // dokladů tohoto klienta, které kategorii nemají vyplněnou.
+        // Doklady s již vybranou kategorií zůstávají beze změny ("pokud tam není zvoleno jiné").
+        $expenseBackfilled = 0;
         if ($newDefaultCategory !== null && $newDefaultCategory !== $oldDefaultCategory) {
             $backfill = $pdo->prepare(
                 'UPDATE purchase_invoices
@@ -409,10 +423,21 @@ final class ClientRepository
                   WHERE vendor_id = ? AND supplier_id = ? AND expense_category_id IS NULL'
             );
             $backfill->execute([$newDefaultCategory, $id, $supplierId]);
-            return $backfill->rowCount();
+            $expenseBackfilled = $backfill->rowCount();
         }
 
-        return 0;
+        $revenueBackfilled = 0;
+        if ($newDefaultRevenueCategory !== null && $newDefaultRevenueCategory !== $oldDefaultRevenueCategory) {
+            $backfill = $pdo->prepare(
+                'UPDATE invoices
+                    SET revenue_category_id = ?
+                  WHERE client_id = ? AND supplier_id = ? AND revenue_category_id IS NULL'
+            );
+            $backfill->execute([$newDefaultRevenueCategory, $id, $supplierId]);
+            $revenueBackfilled = $backfill->rowCount();
+        }
+
+        return ['expense' => $expenseBackfilled, 'revenue' => $revenueBackfilled];
     }
 
     /**
@@ -436,6 +461,31 @@ final class ClientRepository
         $check->execute([$catId, $supplierId]);
         if (!$check->fetchColumn()) {
             throw new \InvalidArgumentException("Kategorie nákladu #$catId nepatří tomuto tenantovi.");
+        }
+        return $catId;
+    }
+
+    /**
+     * Validace výchozí kategorie tržby z payloadu. Vrací int id nebo null.
+     * NULL / 0 / prázdné → null (bez defaultu). Jinak ověří, že kategorie patří
+     * danému tenantovi (supplier_id). Symetrie k {@see resolveExpenseCategoryId}.
+     */
+    private function resolveRevenueCategoryId(array $data, int $supplierId): ?int
+    {
+        if (!array_key_exists('default_revenue_category_id', $data)) {
+            return null;
+        }
+        $raw = $data['default_revenue_category_id'];
+        if ($raw === null || $raw === '' || (int) $raw === 0) {
+            return null;
+        }
+        $catId = (int) $raw;
+        $check = $this->db->pdo()->prepare(
+            'SELECT 1 FROM revenue_categories WHERE id = ? AND supplier_id = ?'
+        );
+        $check->execute([$catId, $supplierId]);
+        if (!$check->fetchColumn()) {
+            throw new \InvalidArgumentException("Kategorie tržby #$catId nepatří tomuto tenantovi.");
         }
         return $catId;
     }
@@ -514,6 +564,11 @@ final class ClientRepository
         if (array_key_exists('default_expense_category_id', $row)) {
             $row['default_expense_category_id'] = $row['default_expense_category_id'] !== null
                 ? (int) $row['default_expense_category_id']
+                : null;
+        }
+        if (array_key_exists('default_revenue_category_id', $row)) {
+            $row['default_revenue_category_id'] = $row['default_revenue_category_id'] !== null
+                ? (int) $row['default_revenue_category_id']
                 : null;
         }
         $row['reverse_charge']        = (bool) ($row['reverse_charge'] ?? 0);

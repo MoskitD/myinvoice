@@ -1,0 +1,89 @@
+<script setup lang="ts">
+import { onMounted, onBeforeUnmount, ref, watch, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { Chart, DoughnutController, ArcElement, Tooltip, Legend } from 'chart.js'
+import type { RevenueCategoryBreakdownItem } from '@/api/dashboard'
+import { formatMoney } from '@/composables/useFormat'
+import { useChartColors } from '@/composables/useTheme'
+
+Chart.register(DoughnutController, ArcElement, Tooltip, Legend)
+
+// Rozpad tržeb po kategoriích za 12 měsíců, CZK-normalizováno (server přepočítá ×exchange_rate).
+const props = defineProps<{ categories: RevenueCategoryBreakdownItem[] }>()
+
+const canvas = ref<HTMLCanvasElement | null>(null)
+let chart: Chart | null = null
+const { t, locale } = useI18n()
+const colors = useChartColors()
+
+const sliceData = computed(() => {
+  const rows = props.categories.filter(c => c.total > 0)
+  if (rows.length === 0) return { labels: [] as string[], values: [] as number[] }
+  const sorted = [...rows].sort((a, b) => b.total - a.total)
+  const top = sorted.slice(0, 8)
+  const rest = sorted.slice(8)
+  const labels = top.map(c => c.label || t('stats.revenue_breakdown.uncategorized'))
+  const values = top.map(c => c.total)
+  if (rest.length > 0) {
+    labels.push(t('common.other'))
+    values.push(rest.reduce((s, c) => s + c.total, 0))
+  }
+  return { labels, values }
+})
+
+function build() {
+  if (!canvas.value) return
+  if (chart) { chart.destroy(); chart = null }
+  const { labels, values } = sliceData.value
+  if (labels.length === 0) return
+  const total = values.reduce((s, v) => s + v, 0)
+  chart = new Chart(canvas.value, {
+    type: 'doughnut',
+    data: {
+      labels,
+      datasets: [{
+        data: values,
+        backgroundColor: labels.map((_, i) => colors.value.palette[i % colors.value.palette.length]),
+        borderWidth: 1,
+        borderColor: colors.value.border,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          position: 'right',
+          labels: { boxWidth: 12, font: { size: 11 }, color: colors.value.tick },
+        },
+        tooltip: {
+          backgroundColor: colors.value.tooltipBg,
+          callbacks: {
+            label: (ctx) => {
+              const v = ctx.parsed as number
+              const pct = total > 0 ? ((v / total) * 100).toFixed(1) : '0'
+              return ` ${ctx.label}: ${formatMoney(v, 'CZK')} (${pct} %)`
+            },
+          },
+        },
+      },
+      cutout: '55%',
+    },
+  })
+}
+
+onMounted(build)
+onBeforeUnmount(() => chart?.destroy())
+watch(() => props.categories, build, { deep: true })
+watch(() => locale.value, build)
+watch(colors, build)
+</script>
+
+<template>
+  <div v-if="sliceData.labels.length === 0" class="text-sm text-neutral-400 text-center py-12">
+    {{ t('common.no_data') }}
+  </div>
+  <div v-else class="relative h-64">
+    <canvas ref="canvas"></canvas>
+  </div>
+</template>

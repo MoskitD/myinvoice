@@ -84,8 +84,8 @@ final class CancelInvoiceAction
                 'INSERT INTO invoices
                    (invoice_type, parent_invoice_id, client_id, project_id, supplier_id,
                     issue_date, tax_date, due_date, currency_id, language,
-                    note_above_items, status, created_by)
-                 VALUES ("cancellation", ?, ?, ?, ?, CURDATE(), NULL, CURDATE(), ?, ?, ?, "issued", ?)'
+                    note_above_items, revenue_category_id, status, created_by)
+                 VALUES ("cancellation", ?, ?, ?, ?, CURDATE(), NULL, CURDATE(), ?, ?, ?, ?, "issued", ?)'
             );
             $stmt->execute([
                 $invoice['id'],
@@ -95,6 +95,8 @@ final class CancelInvoiceAction
                 (int) $invoice['currency_id'],
                 $invoice['language'],
                 $reason !== '' ? "Storno faktury {$invoice['varsymbol']}: $reason" : null,
+                // Storno mirror dědí kategorii tržby původní faktury.
+                $invoice['revenue_category_id'] ?? null,
                 $userId,
             ]);
             $cancellationId = (int) $pdo->lastInsertId();
@@ -137,8 +139,8 @@ final class CancelInvoiceAction
                 'INSERT INTO invoices
                    (invoice_type, parent_invoice_id, client_id, project_id, supplier_id,
                     issue_date, tax_date, due_date, currency_id, reverse_charge, language,
-                    note_above_items, status, created_by)
-                 VALUES ("credit_note", ?, ?, ?, ?, CURDATE(), CURDATE(), CURDATE(), ?, ?, ?, ?, "draft", ?)'
+                    note_above_items, revenue_category_id, status, created_by)
+                 VALUES ("credit_note", ?, ?, ?, ?, CURDATE(), CURDATE(), CURDATE(), ?, ?, ?, ?, ?, "draft", ?)'
             );
             $stmt->execute([
                 $invoice['id'],
@@ -149,6 +151,8 @@ final class CancelInvoiceAction
                 $invoice['reverse_charge'] ? 1 : 0,
                 $invoice['language'],
                 $reason !== '' ? "Dobropis k faktuře {$invoice['varsymbol']}: $reason" : "Dobropis k faktuře {$invoice['varsymbol']}",
+                // Dobropis dědí kategorii tržby původní faktury (záporná tržba ve stejné kategorii).
+                $invoice['revenue_category_id'] ?? null,
                 $userId,
             ]);
             $creditNoteId = (int) $pdo->lastInsertId();

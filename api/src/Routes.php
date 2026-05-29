@@ -194,6 +194,12 @@ final class Routes
         $app->put   ('/api/expense-categories/{id:[0-9]+}',      [\MyInvoice\Action\Codebook\ExpenseCategoriesAction::class, 'update']);
         $app->delete('/api/expense-categories/{id:[0-9]+}',      [\MyInvoice\Action\Codebook\ExpenseCategoriesAction::class, 'delete']);
 
+        // Revenue categories (pro rozpad tržeb v CRM dashboardu + Stats)
+        $app->get   ('/api/revenue-categories',                  [\MyInvoice\Action\Codebook\RevenueCategoriesAction::class, 'list']);
+        $app->post  ('/api/revenue-categories',                  [\MyInvoice\Action\Codebook\RevenueCategoriesAction::class, 'create']);
+        $app->put   ('/api/revenue-categories/{id:[0-9]+}',      [\MyInvoice\Action\Codebook\RevenueCategoriesAction::class, 'update']);
+        $app->delete('/api/revenue-categories/{id:[0-9]+}',      [\MyInvoice\Action\Codebook\RevenueCategoriesAction::class, 'delete']);
+
         // VAT klasifikační kódy (pro DPHDP3 + KH)
         $app->get   ('/api/vat-classifications',                 [\MyInvoice\Action\Codebook\VatClassificationsAction::class, 'list']);
         $app->post  ('/api/vat-classifications',                 [\MyInvoice\Action\Codebook\VatClassificationsAction::class, 'create']);
@@ -345,6 +351,7 @@ final class Routes
         $app->get    ('/api/crm/vendor-concentration', [CrmDashboardAction::class, 'vendorConcentration']);
         $app->get    ('/api/crm/dpo',               [CrmDashboardAction::class, 'dpo']);
         $app->get    ('/api/crm/expense-breakdown', [CrmDashboardAction::class, 'expenseBreakdown']);
+        $app->get    ('/api/crm/revenue-breakdown', [CrmDashboardAction::class, 'revenueBreakdown']);
         $app->get    ('/api/crm/churn-risk',        [CrmDashboardAction::class, 'churnRisk']);
         $app->get    ('/api/crm/action-items',      [CrmDashboardAction::class, 'actionItems']);
         $app->post   ('/api/crm/action-items/dismiss', [CrmDashboardAction::class, 'dismissActionItem']);

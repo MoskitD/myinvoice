@@ -14,6 +14,7 @@ import { clientsApi, type Client, type ViesLookupResult } from '@/api/clients'
 import { projectsApi, type Project } from '@/api/projects'
 import { codebooksApi, type VatRate, type Currency, type Unit } from '@/api/codebooks'
 import { vatClassificationsApi, type VatClassification } from '@/api/vatClassifications'
+import { revenueCategoriesApi, type RevenueCategory } from '@/api/revenueCategories'
 import { formatMoney, formatPercent } from '@/composables/useFormat'
 import { evalMath } from '@/directives/vMath'
 import { apiErrorMessage } from '@/api/errors'
@@ -94,6 +95,7 @@ async function ensureClientLoaded(id: number, fallbackName?: string | null, fall
 const projects = ref<Project[]>([])
 const vatRates = ref<VatRate[]>([])
 const vatClassifications = ref<VatClassification[]>([])
+const revenueCategories = ref<RevenueCategory[]>([])
 const currencies = ref<Currency[]>([])
 const units = ref<Unit[]>([])
 
@@ -136,6 +138,7 @@ const form = ref<{
   varsymbol: string  // Ruční override čísla faktury (prázdný = generuje se při issue)
   vat_classification_code: string | null
   revenue_category: string | null
+  revenue_category_id: number | null
   items: InvoiceItem[]
 }>({
   invoice_type: 'invoice',
@@ -158,6 +161,7 @@ const form = ref<{
   varsymbol: '',
   vat_classification_code: null,
   revenue_category: null,
+  revenue_category_id: null,
   items: [],
 })
 
@@ -308,16 +312,18 @@ watch(() => form.value.invoice_type, (newType, oldType) => {
 })
 
 onMounted(async () => {
-  const [vr, cur, un, vc] = await Promise.all([
+  const [vr, cur, un, vc, rcat] = await Promise.all([
     codebooksApi.vatRates('CZ'),
     codebooksApi.currencies(),
     codebooksApi.units(),
     vatClassificationsApi.list('sale'),
+    revenueCategoriesApi.list(false),
   ])
   vatRates.value = vr
   currencies.value = cur
   units.value = un
   vatClassifications.value = vc
+  revenueCategories.value = rcat
   if (form.value.currency_id === 0) {
     const def = cur.find(c => c.is_default && c.code === 'CZK') || cur[0]
     if (def) {
@@ -358,6 +364,7 @@ onMounted(async () => {
       varsymbol: inv.varsymbol ?? '',
       vat_classification_code: (inv as any).vat_classification_code ?? null,
       revenue_category: (inv as any).revenue_category ?? null,
+      revenue_category_id: (inv as any).revenue_category_id ?? null,
     })
     loadedRate.value = (inv.exchange_rate && inv.currency !== 'CZK')
       ? { rate: inv.exchange_rate, date: (inv.exchange_rate_date ?? inv.issue_date).slice(0, 10), currency: inv.currency }
@@ -452,6 +459,11 @@ async function applyClientDefaults(clientId: number) {
   // Neplátce DPH nikdy nevystavuje RC fakturu — ignorujeme klientský flag.
   // RC jen přepne hlavičkový příznak; sazby položek (nominální) se nemění.
   form.value.reverse_charge = supplierIsVatPayer.value ? c.reverse_charge : false
+  // Výchozí kategorie tržby klienta — předvyplň, jen pokud uživatel ještě nevybral
+  // (project default má přednost a aplikuje se až v applyProjectDefaults).
+  if (form.value.revenue_category_id == null && c.default_revenue_category_id != null) {
+    form.value.revenue_category_id = c.default_revenue_category_id
+  }
   // Klient s vlastní hodnotou → jeho jednotka (bez vlastní = dny, ne supplier),
   // jinak plně dědí supplier default (hodnotu i jednotku).
   if (typeof c.payment_due_default === 'number') {
@@ -508,6 +520,12 @@ async function applyProjectDefaults(projectId: number) {
   form.value.currency_id = p.currency_id
   form.value.currency = p.currency
   form.value.due_date = computeDueDate(form.value.issue_date, p.payment_due_days, (p.payment_due_unit ?? 'days') as DueUnit)
+  // Výchozí kategorie tržby zakázky — PŘEDNOST před klientem. Aplikuje se při výběru
+  // zakázky (konzistentní s tím, že zakázka přepisuje měnu/splatnost). Když zakázka
+  // default nemá, ponecháme hodnotu z klienta.
+  if (p.default_revenue_category_id != null) {
+    form.value.revenue_category_id = p.default_revenue_category_id
+  }
   // Pokud má jen jednu prázdnou položku (bez popisu), refresh sazby z projektu.
   if (form.value.items.length === 1 && (form.value.items[0].description || '').trim() === '') {
     form.value.items[0].unit_price_without_vat = p.hourly_rate
@@ -915,6 +933,7 @@ async function submit() {
       varsymbol: form.value.varsymbol.trim(),
       vat_classification_code: form.value.vat_classification_code,
       revenue_category: form.value.revenue_category,
+      revenue_category_id: form.value.revenue_category_id,
       items: form.value.items.map((it, i) => ({
         description: it.description,
         quantity: it.quantity,
@@ -1343,9 +1362,12 @@ async function deleteDraft() {
           </div>
           <div>
             <label class="block text-xs text-neutral-500 mb-1">{{ t('invoice.classification.revenue_category') }}</label>
-            <input v-model="form.revenue_category" type="text" maxlength="40"
-                   class="w-full h-10 px-3 border border-neutral-300 rounded-md text-sm"
-                   :placeholder="t('invoice.classification.revenue_category_placeholder')" />
+            <select v-model="form.revenue_category_id" class="w-full h-10 px-3 border border-neutral-300 rounded-md bg-surface text-sm">
+              <option :value="null">— {{ t('invoice.classification.revenue_category_none') }} —</option>
+              <option v-for="rc in revenueCategories" :key="rc.id" :value="rc.id">
+                {{ rc.label }} ({{ rc.code }})
+              </option>
+            </select>
             <p class="text-xs text-neutral-500 mt-1">{{ t('invoice.classification.revenue_category_hint') }}</p>
           </div>
         </div>

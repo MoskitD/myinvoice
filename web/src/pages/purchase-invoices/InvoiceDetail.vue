@@ -384,6 +384,29 @@ function transitionLabel(target: PurchaseInvoiceStatus): string {
       </div>
     </div>
 
+    <!-- ═══ Propojení se zálohou — banner pod headerem (sjednoceno s vydanou fakturou) ═══ -->
+    <!-- Tento doklad JE záloha → odkaz na vyúčtovací fakturu -->
+    <RouterLink v-if="invoice.settled_by" :to="`/purchase-invoices/${invoice.settled_by.id}`"
+      class="flex items-center justify-between gap-3 bg-primary-50 border border-primary-200 rounded-lg px-4 py-2.5 text-sm hover:bg-primary-100 transition">
+      <span class="text-primary-700">{{ t('purchase_invoice.advance_link.settled_by') }}</span>
+      <span class="font-medium text-primary-700 font-mono">{{ invoice.settled_by.varsymbol || invoice.settled_by.vendor_invoice_number || ('#' + invoice.settled_by.id) }} →</span>
+    </RouterLink>
+    <!-- Vyúčtovací faktura → odkaz na započtenou zálohu (+ odpojení) -->
+    <div v-else-if="invoice.linked_advance"
+      class="flex items-center justify-between gap-3 bg-primary-50 border border-primary-200 rounded-lg px-4 py-2.5 text-sm">
+      <span class="text-primary-700 min-w-0">
+        {{ t('purchase_invoice.advance_link.linked_to') }}
+        <RouterLink :to="`/purchase-invoices/${invoice.linked_advance.id}`" class="font-mono font-medium hover:underline">
+          {{ invoice.linked_advance.varsymbol || invoice.linked_advance.vendor_invoice_number || ('#' + invoice.linked_advance.id) }}
+        </RouterLink>
+        <span class="text-primary-700/70 font-mono">(−{{ formatMoney(invoice.linked_advance.total_with_vat, invoice.linked_advance.currency) }})</span>
+      </span>
+      <button v-if="auth.canWrite" type="button" @click="unlinkAdvance" :disabled="linkingAdvance"
+        class="cursor-pointer text-xs px-2 py-1 border border-neutral-300 rounded text-neutral-600 hover:bg-neutral-50 disabled:opacity-50 shrink-0 bg-surface">
+        {{ t('purchase_invoice.advance_link.unlink') }}
+      </button>
+    </div>
+
     <!-- ═══ Datumy & metadata (3 sloupce ala vystavená InvoiceDetail) ═══ -->
     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
       <!-- Datumy -->
@@ -525,38 +548,23 @@ function transitionLabel(target: PurchaseInvoiceStatus): string {
       </div>
     </div>
 
-    <!-- ═══ Propojení se zálohovou fakturou (advance) ═══ -->
-    <div class="bg-surface border border-neutral-200 rounded-lg shadow-sm p-5">
-      <h3 class="text-sm font-medium text-neutral-700 mb-3">{{ t('purchase_invoice.advance_link.title') }}</h3>
+    <!-- ═══ Správa propojení se zálohou — jen nelinkované stavy (linkované jsou v banneru pod headerem) ═══ -->
+    <div v-if="!invoice.settled_by && !invoice.linked_advance"
+      class="bg-surface border border-neutral-200 rounded-lg shadow-sm p-5">
+      <h3 class="text-sm font-medium text-neutral-700 mb-3">
+        {{ invoice.document_kind === 'advance'
+            ? t('purchase_invoice.advance_link.title')
+            : t('purchase_invoice.advance_link.title_settlement') }}
+      </h3>
 
-      <!-- Tento doklad JE záloha → reverzní pohled (kdo ji vyúčtovává) -->
-      <template v-if="invoice.document_kind === 'advance'">
-        <div v-if="invoice.settled_by" class="text-sm">
-          {{ t('purchase_invoice.advance_link.settled_by') }}
-          <RouterLink :to="`/purchase-invoices/${invoice.settled_by.id}`" class="text-primary-700 hover:underline font-mono">
-            {{ invoice.settled_by.varsymbol || invoice.settled_by.vendor_invoice_number || ('#' + invoice.settled_by.id) }}
-          </RouterLink>
-        </div>
-        <div v-else class="text-sm text-neutral-500">{{ t('purchase_invoice.advance_link.not_settled') }}</div>
-      </template>
+      <!-- Záloha zatím nevyúčtovaná -->
+      <div v-if="invoice.document_kind === 'advance'" class="text-sm text-neutral-500">
+        {{ t('purchase_invoice.advance_link.not_settled') }}
+      </div>
 
-      <!-- Finální faktura → spárováno / AI návrh / párovat -->
+      <!-- Vyúčtovací faktura bez propojení → AI návrh / spárovat -->
       <template v-else>
-        <div v-if="invoice.linked_advance" class="flex items-center justify-between gap-3 text-sm">
-          <div>
-            {{ t('purchase_invoice.advance_link.linked_to') }}
-            <RouterLink :to="`/purchase-invoices/${invoice.linked_advance.id}`" class="text-primary-700 hover:underline font-mono">
-              {{ invoice.linked_advance.varsymbol || invoice.linked_advance.vendor_invoice_number || ('#' + invoice.linked_advance.id) }}
-            </RouterLink>
-            <span class="text-neutral-500 font-mono">(−{{ formatMoney(invoice.linked_advance.total_with_vat, invoice.linked_advance.currency) }})</span>
-          </div>
-          <button v-if="auth.canWrite" type="button" @click="unlinkAdvance" :disabled="linkingAdvance"
-            class="cursor-pointer text-xs px-2 py-1 border border-neutral-300 rounded text-neutral-600 hover:bg-neutral-50 disabled:opacity-50 shrink-0">
-            {{ t('purchase_invoice.advance_link.unlink') }}
-          </button>
-        </div>
-
-        <div v-else-if="invoice.advance_link_suggestion" class="p-3 bg-primary-50 border border-primary-500/30 rounded-md flex gap-3 items-start">
+        <div v-if="invoice.advance_link_suggestion" class="p-3 bg-primary-50 border border-primary-500/30 rounded-md flex gap-3 items-start">
           <div class="text-sm flex-1 min-w-0">
             <div class="font-medium text-primary-700">{{ t('purchase_invoice.advance_link.ai_suggestion_title') }}</div>
             <div class="text-neutral-600 mt-1">

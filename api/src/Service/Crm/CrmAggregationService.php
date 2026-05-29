@@ -97,6 +97,7 @@ final class CrmAggregationService
         }
         $stmt = $this->db->pdo()->prepare(
             "SELECT period_ym, currency, revenue, revenue_net, costs, costs_net,
+                    revenue_czk, revenue_net_czk, costs_czk, costs_net_czk,
                     invoice_count, purchase_count, vat_output, vat_input
                FROM crm_monthly_summary
               WHERE supplier_id = ?{$where}
@@ -108,6 +109,8 @@ final class CrmAggregationService
         return array_map(function ($r) {
             $rev = (float) $r['revenue'];
             $costs = (float) $r['costs'];
+            $revCzk = (float) ($r['revenue_czk'] ?? 0);
+            $costsCzk = (float) ($r['costs_czk'] ?? 0);
             return [
                 'period'          => (string) $r['period_ym'],
                 'currency'        => (string) $r['currency'],
@@ -116,6 +119,11 @@ final class CrmAggregationService
                 'costs'           => $costs,
                 'costs_net'       => (float) $r['costs_net'],
                 'profit'          => $rev - $costs,
+                'revenue_czk'     => $revCzk,
+                'revenue_net_czk' => (float) ($r['revenue_net_czk'] ?? 0),
+                'costs_czk'       => $costsCzk,
+                'costs_net_czk'   => (float) ($r['costs_net_czk'] ?? 0),
+                'profit_czk'      => $revCzk - $costsCzk,
                 'invoice_count'   => (int) $r['invoice_count'],
                 'purchase_count'  => (int) $r['purchase_count'],
                 'vat_output'      => (float) $r['vat_output'],
@@ -272,6 +280,7 @@ final class CrmAggregationService
     {
         $stmt = $this->db->pdo()->prepare(
             "SELECT period_ym, currency, revenue, revenue_net, costs, costs_net,
+                    revenue_czk, revenue_net_czk, costs_czk, costs_net_czk,
                     invoice_count, purchase_count, vat_output, vat_input
                FROM crm_monthly_summary
               WHERE supplier_id = ? AND period_ym = ?
@@ -290,6 +299,8 @@ final class CrmAggregationService
             "SELECT currency,
                     SUM(revenue) AS revenue, SUM(revenue_net) AS revenue_net,
                     SUM(costs)   AS costs,   SUM(costs_net)   AS costs_net,
+                    SUM(revenue_czk) AS revenue_czk, SUM(revenue_net_czk) AS revenue_net_czk,
+                    SUM(costs_czk)   AS costs_czk,   SUM(costs_net_czk)   AS costs_net_czk,
                     SUM(invoice_count) AS invoice_count,
                     SUM(purchase_count) AS purchase_count,
                     SUM(vat_output) AS vat_output, SUM(vat_input) AS vat_input
@@ -312,6 +323,12 @@ final class CrmAggregationService
             'costs'          => (float) $r['costs'],
             'costs_net'      => (float) $r['costs_net'],
             'profit'         => (float) $r['revenue'] - (float) $r['costs'],
+            // CZK-přepočtené hodnoty (pro agregaci „Vše" napříč měnami)
+            'revenue_czk'     => (float) ($r['revenue_czk'] ?? 0),
+            'revenue_net_czk' => (float) ($r['revenue_net_czk'] ?? 0),
+            'costs_czk'       => (float) ($r['costs_czk'] ?? 0),
+            'costs_net_czk'   => (float) ($r['costs_net_czk'] ?? 0),
+            'profit_czk'      => (float) ($r['revenue_czk'] ?? 0) - (float) ($r['costs_czk'] ?? 0),
             'invoice_count'  => (int) $r['invoice_count'],
             'purchase_count' => (int) $r['purchase_count'],
             'vat_output'     => (float) $r['vat_output'],
@@ -608,6 +625,47 @@ final class CrmAggregationService
         $sum = array_sum(array_column($rows, 'total'));
         return array_map(fn ($r) => [
             'category_id' => $r['expense_category_id'] !== null ? (int) $r['expense_category_id'] : null,
+            'code'        => $r['code'] !== null ? (string) $r['code'] : null,
+            'label'       => $r['label'] !== null ? (string) $r['label'] : null,
+            'total'       => (float) $r['total'],
+            'count'       => (int) $r['cnt'],
+            'percent'     => $sum > 0 ? round(((float) $r['total'] / $sum) * 100, 1) : 0.0,
+        ], $rows);
+    }
+
+    /**
+     * Revenue breakdown po kategoriích tržeb (vyžaduje revenue_categories assignment).
+     * Symetrie k {@see expenseBreakdown} pro vydané faktury.
+     *
+     * @return list<array{category_id:?int, code:?string, label:?string, total:float, count:int, percent:float}>
+     */
+    public function revenueBreakdown(int $supplierId, int $monthsBack = 12, ?string $currency = null): array
+    {
+        // CZK přepočet — bez něj sumace EUR+CZK ve stejné kategorii dává nesmysl.
+        // Parametr $currency BC, vždy CZK (jako expenseBreakdown).
+        unset($currency);
+        $start = (new \DateTimeImmutable())->modify('-' . $monthsBack . ' months')->format('Y-m-d');
+        $params = [$supplierId, $start];
+        $sql = "
+            SELECT i.revenue_category_id, rc.code, rc.label,
+                   SUM(COALESCE(i.total_with_vat, 0) * COALESCE(IF(cur.code = 'CZK', 1, i.exchange_rate), 1)) AS total,
+                   COUNT(*) AS cnt
+              FROM invoices i
+         LEFT JOIN revenue_categories rc ON rc.id = i.revenue_category_id
+         LEFT JOIN currencies cur ON cur.id = i.currency_id
+             WHERE i.supplier_id = ?
+               AND i.issue_date >= ?
+               AND i.status NOT IN ('draft', 'cancelled')
+               AND i.invoice_type != 'proforma'  -- proformy vynechat (nejsou daňový doklad)
+          GROUP BY i.revenue_category_id, rc.code, rc.label
+          ORDER BY total DESC
+        ";
+        $stmt = $this->db->pdo()->prepare($sql);
+        $stmt->execute($params);
+        $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+        $sum = array_sum(array_column($rows, 'total'));
+        return array_map(fn ($r) => [
+            'category_id' => $r['revenue_category_id'] !== null ? (int) $r['revenue_category_id'] : null,
             'code'        => $r['code'] !== null ? (string) $r['code'] : null,
             'label'       => $r['label'] !== null ? (string) $r['label'] : null,
             'total'       => (float) $r['total'],

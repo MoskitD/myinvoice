@@ -351,12 +351,23 @@ final class PurchaseInvoiceRepository
         }
 
         // Sanity check: vendor existuje a patří tenantovi
-        $stmt = $pdo->prepare('SELECT supplier_id FROM clients WHERE id = ?');
+        $stmt = $pdo->prepare('SELECT supplier_id, default_expense_category_id FROM clients WHERE id = ?');
         $stmt->execute([$vendorId]);
-        $vendorSupplier = (int) $stmt->fetchColumn();
+        $vendorRow = $stmt->fetch(\PDO::FETCH_ASSOC) ?: [];
+        $vendorSupplier = (int) ($vendorRow['supplier_id'] ?? 0);
         if ($vendorSupplier !== $supplierId) {
             throw new \InvalidArgumentException("Vendor #$vendorId nepatří tomuto tenantovi.");
         }
+
+        // Výchozí kategorie nákladu dodavatele — aplikuje se, pokud volající kategorii
+        // explicitně neurčil. Platí pro manuální zadání i pro všechny importy
+        // (AI, ISDOC/ZIP, iDoklad, Fakturoid, bankovní párování), které jdou tudy.
+        // Sjednocuje chování se server-side backfillem v ClientRepository::update().
+        $expenseCategoryId = (isset($data['expense_category_id']) && $data['expense_category_id'])
+            ? (int) $data['expense_category_id']
+            : (($vendorRow['default_expense_category_id'] ?? null) !== null
+                ? (int) $vendorRow['default_expense_category_id']
+                : null);
 
         // Vendor invoice number — povinné, validace max 50 znaků
         $vendorInvoiceNumber = trim((string) ($data['vendor_invoice_number'] ?? ''));
@@ -431,7 +442,7 @@ final class PurchaseInvoiceRepository
             max(0.0, min(100.0, (float) ($data['vat_deduction_percent'] ?? 100))),
             (array_key_exists('tax_deductible', $data) && !$data['tax_deductible']) ? 0 : 1,
             !empty($data['is_fixed_asset']) ? 1 : 0,
-            isset($data['expense_category_id']) && $data['expense_category_id'] ? (int) $data['expense_category_id'] : null,
+            $expenseCategoryId,
             $userId,
         ]);
 

@@ -8,6 +8,7 @@ import { formatMoney } from '@/composables/useFormat'
 import RevenueChart from '@/components/charts/RevenueChart.vue'
 import CumulativeYtdChart from '@/components/charts/CumulativeYtdChart.vue'
 import TopClientsPieChart from '@/components/charts/TopClientsPieChart.vue'
+import RevenueCategoryPieChart from '@/components/charts/RevenueCategoryPieChart.vue'
 import TopProjectsBarChart from '@/components/charts/TopProjectsBarChart.vue'
 import StatusDoughnutChart from '@/components/charts/StatusDoughnutChart.vue'
 import ProjectStatusChart from '@/components/charts/ProjectStatusChart.vue'
@@ -416,6 +417,18 @@ const hasAnyData = computed(() =>
       <!-- Top klienti (pie) + Top zakázky (bar), YTD + loni — sloučeno do jednoho gridu:
            když nejsou loňská data, „aktuální rok" dlaždice klientů a zakázek jdou vedle sebe
            (auto-flow), jinak se řadí pod sebe (klienti 2 sloupce, pak zakázky 2 sloupce). -->
+      <!-- Tržby podle kategorie (rolling 12m, CZK-normalizováno) -->
+      <div v-if="summary.revenue_breakdown_12m && summary.revenue_breakdown_12m.some(r => r.total > 0)"
+        class="bg-surface border border-neutral-200 rounded-lg p-5 shadow-sm">
+        <div class="flex items-baseline justify-between mb-4">
+          <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500">
+            {{ t('stats.revenue_breakdown.title') }}
+          </h3>
+          <span class="text-xs font-mono text-neutral-500">CZK · 12m</span>
+        </div>
+        <RevenueCategoryPieChart :categories="summary.revenue_breakdown_12m" />
+      </div>
+
       <div v-if="(summary.top_clients_ytd.length + summary.top_clients_prev_year.length) > 0
                  || (projectStats && (projectStats.top_this_year.top.length + projectStats.top_prev_year.top.length) > 0)"
         class="grid grid-cols-1 lg:grid-cols-2 gap-4">

@@ -25,9 +25,11 @@ export interface Client {
   hourly_rate: number
   note?: string | null
   default_expense_category_id?: number | null
-  // Vrací UpdateClientAction: počet přijatých faktur, do kterých byla doplněna
-  // nově nastavená výchozí kategorie nákladu (pro toast po uložení dodavatele).
+  default_revenue_category_id?: number | null
+  // Vrací UpdateClientAction: počet faktur, do kterých byla doplněna nově nastavená
+  // výchozí kategorie nákladu/tržby (pro toast po uložení klienta).
   expense_category_backfilled?: number
+  revenue_category_backfilled?: number
   invoice_number_format?: string | null
   proforma_number_format?: string | null
   credit_note_number_format?: string | null
@@ -121,6 +123,7 @@ export interface ClientPayload {
   hourly_rate?: number
   note?: string | null
   default_expense_category_id?: number | null
+  default_revenue_category_id?: number | null
   invoice_number_format?: string | null
   proforma_number_format?: string | null
   credit_note_number_format?: string | null

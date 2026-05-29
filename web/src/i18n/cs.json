@@ -288,6 +288,7 @@
     },
     "advance_link": {
       "title": "Zálohová faktura",
+      "title_settlement": "Vyúčtování zálohy",
       "none": "Není propojeno se zálohou.",
       "pair": "Spárovat se zálohou",
       "linked_to": "Vyúčtovává zálohu",
@@ -911,8 +912,14 @@
       "no_vat_class": "(auto-default podle sazby)",
       "vat_classification_hint": "Auto-přiřazení podle sazby DPH (21%→1, 12%→2, 0%→3, reverse→20).",
       "revenue_category": "Kategorie tržby (volitelně)",
+      "revenue_category_none": "bez kategorie",
       "revenue_category_placeholder": "např. konzultace, produkt, hosting",
-      "revenue_category_hint": "Free-form tag pro analýzu byznys mixu v CRM."
+      "revenue_category_hint": "Kategorie pro rozpad tržeb v CRM a statistikách. Spravuje se v Číselnících."
+    },
+    "linked": {
+      "final_invoice": "Daňový doklad k záloze",
+      "proforma": "Zálohová faktura",
+      "parent": "Původní faktura"
     },
     "pdf_history": {
       "title": "Historie PDF",
@@ -1144,6 +1151,10 @@
     "default_expense_category_none": "bez výchozí kategorie",
     "default_expense_category_hint": "Předvyplní se u nových přijatých faktur tohoto dodavatele. Po uložení se navíc doplní do všech jeho stávajících faktur, které kategorii nemají vyplněnou.",
     "default_expense_category_backfilled": "Výchozí kategorie doplněna do {count} přijatých faktur bez kategorie.",
+    "default_revenue_category": "Výchozí kategorie tržby",
+    "default_revenue_category_none": "bez výchozí kategorie",
+    "default_revenue_category_hint": "Předvyplní se u nových vydaných faktur tohoto zákazníka. Po uložení se navíc doplní do všech jeho stávajících faktur, které kategorii nemají vyplněnou. Kategorie zakázky má přednost.",
+    "default_revenue_category_backfilled": "Výchozí kategorie tržby doplněna do {count} vydaných faktur bez kategorie.",
     "filter_category_all": "Všechny kategorie",
     "create_first": "Vytvořit prvního",
     "company_name": "Firma",
@@ -1290,7 +1301,11 @@
     "delete_failed": "Smazání selhalo",
     "requires_approval": "Vyžaduje schválení výkazu práce zákazníkem",
     "requires_approval_badge": "Schválení výkazu zákazníkem",
-    "requires_approval_hint": "Faktura nepůjde vystavit, dokud zákazník neschválí výkaz přes email. Po schválení se faktura automaticky vystaví a odešle."
+    "requires_approval_hint": "Faktura nepůjde vystavit, dokud zákazník neschválí výkaz přes email. Po schválení se faktura automaticky vystaví a odešle.",
+    "default_revenue_category": "Výchozí kategorie tržby",
+    "default_revenue_category_none": "bez výchozí kategorie",
+    "default_revenue_category_hint": "Předvyplní se u nových vydaných faktur této zakázky a má PŘEDNOST před kategorií zákazníka. Po uložení se navíc doplní do všech faktur zakázky, které kategorii nemají vyplněnou.",
+    "default_revenue_category_backfilled": "Výchozí kategorie tržby doplněna do {count} faktur zakázky bez kategorie."
   },
   "bank": {
     "title": "Bankovní výpisy",
@@ -1407,6 +1422,10 @@
     "active_clients_hint": "(nearchivovaní)",
     "revenue_by_year_table": "Obrat po rocích",
     "revenue_by_month_table": "Obrat po měsících (12)",
+    "revenue_breakdown": {
+      "title": "Tržby podle kategorie",
+      "uncategorized": "Bez kategorie"
+    },
     "top_clients_table": "Top klienti — {year}",
     "top_projects_table": "Top zakázky — {year}",
     "top_clients_12m_table": "Top klienti — posledních 12 měsíců",
@@ -1755,12 +1774,29 @@
     "archived_due_to_usage": "Kategorie už je použitá — archivována (skryta z pickerů, ale zachová historii).",
     "delete_confirm": "Smazat kategorii „{label}\"? Pokud je už použitá, jen ji archivuji."
   },
+  "revenue_categories": {
+    "hint": "Kategorie tržeb vydaných faktur — slouží pro rozpad v CRM a statistikách.",
+    "empty": "Žádné kategorie. Vytvoř první a přiřaď na vydané faktury pro lepší přehled tržeb.",
+    "new": "Nová kategorie",
+    "new_title": "Nová kategorie tržby",
+    "edit_title": "Úprava kategorie",
+    "code": "Kód",
+    "code_hint": "Krátký identifikátor (A-Z, 0-9, _, -), např. \"konzultace\", \"produkt\"",
+    "label": "Název",
+    "display_order": "Pořadí (řazení)",
+    "usage": "Použití",
+    "archive": "Archivovat (skrýt z pickerů)",
+    "archived": "Archivováno",
+    "archived_due_to_usage": "Kategorie už je použitá — archivována (skryta z pickerů, ale zachová historii).",
+    "delete_confirm": "Smazat kategorii „{label}\"? Pokud je už použitá, jen ji archivuji."
+  },
   "codebooks": {
     "title": "Číselníky",
     "subtitle": "Měny + bankovní účty, sazby DPH, země, jednotky. Pouze pro admin.",
     "tab_currencies": "Měny",
     "tab_vat": "Sazby DPH",
     "tab_expense_categories": "Kategorie nákladů",
+    "tab_revenue_categories": "Kategorie tržeb",
     "tab_vat_classifications": "Klasifikace DPH",
     "tab_countries": "Země",
     "tab_units": "Jednotky",
@@ -2188,6 +2224,7 @@
       "avg_reminders": "Průměr upomínek na zaplacení"
     },
     "last_n_months": "Posledních {n} měsíců",
+    "all_currencies": "Vše (CZK)",
     "period_chip": "{n} m",
     "period_label": "Období:",
     "kpi_section": "Přehled — tento měsíc & od začátku roku",
@@ -2270,6 +2307,12 @@
       "empty": "Žádné přijaté faktury v tomto období.",
       "uncategorized": "Bez kategorie",
       "uncategorized_hint": "Přiřaďte kategorie nákladů v editoru přijatých faktur — uvidíte podrobnější rozpad."
+    },
+    "revenue_breakdown": {
+      "title": "Tržby podle kategorií",
+      "empty": "Žádné vydané faktury v tomto období.",
+      "uncategorized": "Bez kategorie",
+      "uncategorized_hint": "Přiřaďte kategorie tržeb v editoru vydaných faktur — uvidíte podrobnější rozpad."
     },
     "churn": {
       "title": "Riziko ztráty klientů (60+ dní bez objednávky)",

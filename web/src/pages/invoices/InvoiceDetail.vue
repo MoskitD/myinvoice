@@ -890,6 +890,20 @@ async function updateApprovalStatus() {
       </div>
     </div>
 
+    <!-- Cross-link na související doklad: proforma → vystavený daňový doklad; doklad → rodič -->
+    <RouterLink v-if="isProforma && invoice.final_invoice"
+      :to="`/invoices/${invoice.final_invoice.id}`"
+      class="flex items-center justify-between gap-3 bg-primary-50 border border-primary-200 rounded-lg px-4 py-2.5 text-sm hover:bg-primary-100 transition mb-4">
+      <span class="text-primary-700">{{ t('invoice.linked.final_invoice') }}</span>
+      <span class="font-medium text-primary-700 font-mono">{{ invoice.final_invoice.varsymbol || `#${invoice.final_invoice.id}` }} →</span>
+    </RouterLink>
+    <RouterLink v-if="invoice.parent_invoice"
+      :to="`/invoices/${invoice.parent_invoice.id}`"
+      class="flex items-center justify-between gap-3 bg-primary-50 border border-primary-200 rounded-lg px-4 py-2.5 text-sm hover:bg-primary-100 transition mb-4">
+      <span class="text-primary-700">{{ invoice.parent_invoice.invoice_type === 'proforma' ? t('invoice.linked.proforma') : t('invoice.linked.parent') }}</span>
+      <span class="font-medium text-primary-700 font-mono">{{ invoice.parent_invoice.varsymbol || `#${invoice.parent_invoice.id}` }} →</span>
+    </RouterLink>
+
     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
       <div class="bg-surface border border-neutral-200 rounded-lg p-5 shadow-sm">
         <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500 mb-3">
@@ -1087,6 +1101,14 @@ async function updateApprovalStatus() {
     <div v-if="invoice.note_below_items" class="bg-surface border border-neutral-200 rounded-lg p-5 shadow-sm">
       <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500 mb-2">{{ t('invoice.note') }}</h3>
       <p class="text-sm text-neutral-700 whitespace-pre-wrap">{{ invoice.note_below_items }}</p>
+    </div>
+
+    <div v-if="invoice.revenue_category_label" class="bg-surface border border-neutral-200 rounded-lg px-5 py-3 shadow-sm flex items-center justify-between text-sm">
+      <span class="text-neutral-500">{{ t('invoice.classification.revenue_category') }}</span>
+      <span class="font-medium text-neutral-900">
+        {{ invoice.revenue_category_label }}
+        <span class="text-neutral-400">({{ invoice.revenue_category_code }})</span>
+      </span>
     </div>
 
 

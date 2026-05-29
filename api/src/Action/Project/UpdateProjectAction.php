@@ -40,7 +40,7 @@ final class UpdateProjectAction
         }
 
         try {
-            $this->repo->update($id, $body);
+            $backfilled = $this->repo->update($id, $body);
         } catch (\InvalidArgumentException $e) {
             return Json::error($response, 'integrity_violation', $e->getMessage(), 400);
         }
@@ -49,6 +49,10 @@ final class UpdateProjectAction
         $ip = $this->ipMatcher->clientIpFromRequest($request->getServerParams());
         $this->logger->log('project.updated', $user['id'] ?? null, 'project', $id, null, $ip, $request->getHeaderLine('User-Agent'));
 
-        return Json::ok($response, $this->repo->find($id));
+        // revenue_category_backfilled = počet vydaných faktur, do kterých byla doplněna
+        // nově nastavená výchozí kategorie tržby zakázky (frontend ukáže toast).
+        $project = $this->repo->find($id) ?? [];
+        $project['revenue_category_backfilled'] = $backfilled;
+        return Json::ok($response, $project);
     }
 }

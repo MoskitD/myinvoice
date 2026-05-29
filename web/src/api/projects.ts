@@ -24,8 +24,10 @@ export interface Project {
   status: 'active' | 'paused' | 'closed'
   requires_work_report_approval: boolean
   note?: string | null
+  default_revenue_category_id?: number | null
   archived_at?: string | null
   invoices_count?: number
+  revenue_category_backfilled?: number
   client_company_name?: string
   client_main_email?: string
   billing_emails: BillingEmail[]
@@ -56,6 +58,7 @@ export interface ProjectPayload {
   status: 'active' | 'paused' | 'closed'
   requires_work_report_approval?: boolean
   note?: string | null
+  default_revenue_category_id?: number | null
   billing_emails: BillingEmail[]
 }
 
