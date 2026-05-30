@@ -20,6 +20,7 @@ Tabulka ukazuje:
 | Stát | 2-písmenný kód (CZ, SK, DE, …) |
 | Měna | Výchozí měna pro nové faktury |
 | Hlavní e-mail | Kontakt pro odesílání faktur |
+| Plátce DPH | Badge **Ano / Ne** (od v4.7.0) — zda je subjekt plátce DPH. Užitečné hlavně u **dodavatelů**: u neplátce nemá přijatá faktura nárok na odpočet (viz [§ 10.2.4](10_Prijate_faktury.md#1024-daňová-uznatelnost-a-nárok-na-odpočet)). Příznak se plní z ARES (CZ) / VIES (EU). |
 | Obrat letos | Suma vystavených faktur v aktuálním roce, v měně klienta |
 
 Nad tabulkou je vyhledávač (jméno / IČO) a filtr stavu (`Aktivní` / `Archivovaní`).

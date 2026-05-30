@@ -52,6 +52,9 @@ Tady nastavíš metadata, která se zkopírují na každou vygenerovanou fakturu
 - **Sleva z celé faktury** — procentuální sleva (0–100 %), kterou zdědí každá
   vygenerovaná faktura. Na faktuře se projeví jako záporná položka „Sleva X %"
   (po sazbách DPH) — viz § 11.4.1.
+- **Ceny s DPH / bez DPH** *(od v4.7.0)* — režim, ve kterém jsou zadané ceny
+  položek šablony. „s DPH" (brutto) počítá daň „shora" koeficientem a propisuje
+  se na každou vygenerovanou fakturu — viz [§ 11.2.6](11_Faktura_editor.md#1126-ceny-s-dph-vs-bez-dph-brutto--netto-režim).
 - **DUZP** *(plátci DPH)* — režim, kterým se počítá datum uskutečnění
   zdanitelného plnění z `issue_date`:
     - **Stejné jako datum vystavení** *(default)* — DUZP = vystavení.

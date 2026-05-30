@@ -75,6 +75,14 @@ Tlačítkem **+ Přidat položku** přidej řádek. Per řádek:
 
 Souhrn dole se přepočítá automaticky po každé změně.
 
+> 💡 **Ceny „s DPH" (brutto režim)** *(od v4.7.0)* — přepínačem **Ceny zadávám
+> s DPH** (u DPH v hlavičce) lze zadat položky **včetně DPH** (typicky účtenka /
+> paragon), takže celková částka sedí na haléř. DPH se pak počítá „shora"
+> koeficientovou metodou (§37 ZDP); zadáním ceny do sloupce „Celkem s DPH" se režim
+> zapne automaticky. Funguje stejně jako u vystavených faktur — viz
+> [§ 11.2.6](11_Faktura_editor.md#1126-ceny-s-dph-vs-bez-dph-brutto--netto-režim).
+> AI import účtenek režim nastaví sám.
+
 ### 10.2.4 Daňová uznatelnost a nárok na odpočet
 
 V boxu **Klasifikace** jsou dva nezávislé příznaky řídící, jak faktura vstupuje do daňových výkazů:
@@ -91,6 +99,38 @@ V boxu **Klasifikace** jsou dva nezávislé příznaky řídící, jak faktura v
 - **Daňově uznatelný náklad** — řídí pouze daň z příjmů: když je vypnuto, náklad se nezahrne do orientačního hospodářského výsledku (DPFO/DPPO). S DPH to nesouvisí (faktura může mít odpočitatelné DPH a být daňově neuznatelná, i naopak).
 
 Oba příznaky jsou vidět i v **detailu** přijaté faktury (box Měna/DPH).
+
+#### Dodavatel neplátce DPH → bez nároku na odpočet
+
+> Přidáno v4.7.0.
+
+Pokud je dodavatel **neplátce DPH**, na jeho dokladu žádná DPH není a **není co
+odpočítat** — uplatnit odpočet by byla daňová chyba (neoprávněný odpočet v ř. 40
+přiznání / sekci B kontrolního hlášení). MyInvoice proto plátcovství dodavatele
+**sleduje a vynucuje**:
+
+- **Zjištění plátcovství** — autoritativně z **ARES** podle IČO (CZ), u
+  zahraničních EU subjektů z **VIES** podle DIČ. Ověří se online při výběru /
+  editaci dodavatele ve formuláři (výsledek se cachuje 24 h).
+- **Volba v editoru** — pod checkboxem „Reverse charge" je přepínač **„Dodavatel
+  je plátce DPH"**. Nastaví se automaticky podle ARES/VIES, ale můžeš ho vědomě
+  přepsat.
+- **Vynucení u neplátce** — když je dodavatel neplátce, faktura se automaticky
+  nastaví na **Nárok na odpočet = Bez nároku** (`vat_deduction='none'`), sazby
+  řádků se vynulují na 0 % a zobrazí se varování. Doklad pak do DPH evidence
+  nevstupuje (je to jen účetní náklad). Override je možný.
+- **AI import** — extraktor plátcovství ověří a u neplátce (signál „DIČ:
+  Neplátce DPH" / žádné DIČ + žádná DPH na řádcích, případně ARES) odpočet
+  automaticky zakáže a doplní varování (viz [§ 10.7](#107-ai-extrakce--kontrola-výsledků)).
+
+Plátcovství dodavatele je vidět i ve **výpisu klientů/dodavatelů** jako badge
+*Plátce DPH* (viz [§ 7.1](07_Klienti.md#71-seznam-klientů)).
+
+> 🛠️ **Zpětná oprava existujících dodavatelů** — po upgradu na v4.7.0 jednorázově
+> spusť `php api/bin/backfill-vendor-vat-payer.php`. Skript podle ARES/VIES doplní příznak
+> plátcovství a u neplátců opraví už zaevidované přijaté faktury (zakáže odpočet,
+> sazby na 0 %, **celková částka beze změny**). Výchozí běh je **dry-run** (jen
+> náhled); zápis až s `--apply`.
 
 ### 10.2.5 Platba v jiné měně (multi-currency)
 
@@ -289,6 +329,15 @@ php api/bin/recheck-ai-extracted-invoices.php --apply            # zápis
 php api/bin/recheck-ai-extracted-invoices.php --supplier-id=1
 php api/bin/recheck-ai-extracted-invoices.php --threshold=0.05
 ```
+
+### Dodavatel neplátce DPH
+
+> Přidáno v4.7.0.
+
+Při AI importu se ověří **plátcovství dodavatele** (ARES/VIES, případně signál
+z dokladu „DIČ: Neplátce DPH"). U neplátce se automaticky nastaví **Bez nároku
+na odpočet**, vynulují sazby a doplní varování — aby se neoprávněný odpočet
+nedostal do přiznání. Detail viz [§ 10.2.4](#1024-daňová-uznatelnost-a-nárok-na-odpočet).
 
 ## 10.8 Audit log
 

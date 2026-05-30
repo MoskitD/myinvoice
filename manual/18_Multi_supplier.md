@@ -73,7 +73,9 @@ Každý dodavatel má vlastní:
   `2605002`, …)
 - **Šablonu čísla faktury** — vlastní formát per typ dokladu (`{YY}{MM}{CCC}`,
   `JD{YYYY}-{CC}`, …) + reset cyklu (rok / měsíc / nikdy) — viz § 18.5.4
-- **Výchozí nastavení** — splatnost, hodinová sazba, DPH
+- **Výchozí nastavení** — splatnost, hodinová sazba, DPH, **výchozí režim cen
+  s DPH / bez DPH** (*Ceny s DPH*, od v4.7.0 — předvyplní přepínač u nové
+  faktury, viz [§ 11.2.6](11_Faktura_editor.md#1126-ceny-s-dph-vs-bez-dph-brutto--netto-režim))
 - **E-mailové šablony** (faktura nová / upomínka / reset hesla)
 - **Pohoda kódy** pro export
 - **From: jméno + Reply-To** v odchozích e-mailech

@@ -73,6 +73,35 @@ V hlavičce konceptu je pole **Číslo faktury** (resp. „Číslo zálohové fa
 Šablonu pro automatické generování nastavuješ v **Systém → Dodavatelé →
 [tvůj dodavatel] → Číslování faktur** — viz [§ 18.5.3](18_Multi_supplier.md#1853-číslování-faktur).
 
+### 11.2.6 Ceny „s DPH" vs „bez DPH" (brutto / netto režim)
+
+> Přidáno v4.7.0.
+
+Přepínač **Ceny zadávám s DPH / bez DPH** (v hlavičce u DPH) určuje, jak se na
+faktuře počítá daň:
+
+| Režim | Co je vstupem | Jak se počítá DPH | Typické použití |
+|---|---|---|---|
+| **bez DPH (netto)** *(výchozí)* | cena bez DPH | „zdola": `DPH = základ × sazba` | běžné B2B faktury |
+| **s DPH (brutto)** | cena včetně DPH | „shora" koeficientem (§37 ZDP): `DPH = round(brutto × sazba/(100+sazba))`, `základ = brutto − DPH` | účtenky, paragony, B2C, kde má sedět **celková částka** |
+
+V režimu **s DPH** se zadává cena do sloupce **„Celkem s DPH"** a celková částka
+faktury **sedí na haléř** — např. 33 Kč s DPH @ 21 % → základ **27,27** / DPH
+**5,73** / celkem **33,00** (ne 32,9967, které by vyšlo přepočtem zdola). U více
+řádků stejné sazby se haléřové reziduum dorovná na nejsilnějším řádku, takže
+součet daně přesně odpovídá dani z celkového brutto — **detail faktury, PDF i
+DPH výkazy (přiznání, kontrolní hlášení, kniha DPH) ukazují stejné číslo.**
+
+- **Auto-přepnutí:** jakmile zadáš cenu do sloupce „Celkem s DPH", editor sám
+  přepne fakturu do režimu „s DPH" (abys nemusel myslet na přepínač).
+- **Předvyplnění per dodavatel:** výchozí režim nové faktury nastavíš v
+  **Nastavení → Můj dodavatel → Ceny s DPH** (viz [§ 18.3](18_Multi_supplier.md#183-co-je-per-dodavatel-izolované)).
+- **Zpětná kompatibilita:** výchozí stav je „bez DPH" a všechny existující
+  faktury zůstávají beze změny.
+
+> 💡 Režim „s DPH" funguje stejně i u **přijatých faktur** (viz [§ 10.2.3](10_Prijate_faktury.md#1023-položky))
+> a u **šablon pravidelné fakturace** (viz [§ 15.2.2](15_Pravidelne_fakturace.md#1522-sekce-faktura)).
+
 ## 11.3 Položky
 
 Tabulka řádků faktury. Tlačítko **+ Přidat položku** přidá nový řádek.
@@ -82,9 +111,10 @@ Tabulka řádků faktury. Tlačítko **+ Přidat položku** přidá nový řáde
 | Popis | Co fakturuješ. Lze multiline. **Tip:** pokud je v popisu měsíc (`Konzultace 3/2026`), klonování faktury automaticky inkrementuje. |
 | Množství | Počet jednotek (kusy / hodiny / …) |
 | Jednotka | Z číselníku (default `h` / hodina). Číselník spravuješ v **Systém → Číselníky → Jednotky** — viz [§ 19.1.4](19_Nastaveni.md#1914-jednotky). |
-| Cena/jed. | Jednotková cena (bez DPH pokud máš DPH na konci, jinak včetně) |
+| Cena/jed. | Jednotková cena (v režimu „bez DPH" netto, v režimu „s DPH" brutto — viz [§ 11.2.6](#1126-ceny-s-dph-vs-bez-dph-brutto--netto-režim)) |
 | DPH | Sazba — `21 %`, `12 %`, `0 %` (osvobozeno), `RC` (reverse charge) |
 | Celkem | Auto-počítáno (množství × cena/jed.) |
+| Celkem s DPH | Cena řádku včetně DPH. Zadáním do tohoto sloupce se faktura přepne do režimu „s DPH" a cena bez DPH se dopočte zpětně — viz [§ 11.2.6](#1126-ceny-s-dph-vs-bez-dph-brutto--netto-režim). |
 
 ### 11.3.1 Drag & drop pořadí
 
