@@ -85,10 +85,10 @@ final class FinalFromProformaCreator
             $stmt = $pdo->prepare(
                 'INSERT INTO invoices
                    (invoice_type, parent_invoice_id, client_id, project_id, supplier_id,
-                    issue_date, tax_date, due_date, currency_id, reverse_charge, language,
+                    issue_date, tax_date, due_date, currency_id, reverse_charge, prices_include_vat, language,
                     note_above_items, advance_paid_amount, discount_percent, payment_method,
                     revenue_category_id, status, created_by)
-                 VALUES ("invoice", ?, ?, ?, ?, CURDATE(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "draft", ?)'
+                 VALUES ("invoice", ?, ?, ?, ?, CURDATE(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "draft", ?)'
             );
             $stmt->execute([
                 $proformaId,
@@ -99,6 +99,9 @@ final class FinalFromProformaCreator
                 $dueDate,
                 (int) $proforma['currency_id'],
                 $proforma['reverse_charge'] ? 1 : 0,
+                // Režim „ceny s DPH" musí dědit z proformy — jinak by se zkopírované brutto
+                // jednotkové ceny přepočítaly jako netto a daňový doklad by měl nafouknuté totály.
+                !empty($proforma['prices_include_vat']) ? 1 : 0,
                 $proforma['language'],
                 $noteAbove,
                 $advance,

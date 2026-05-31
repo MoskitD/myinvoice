@@ -247,13 +247,18 @@ final class RecurringTemplateRepository
     }
 
     /**
-     * SQL výraz: součet faktury šablony `t` (base + DPH, per-line rounding,
-     * respektuje t.reverse_charge). Použit v list() pro per-řádek i agregaci.
+     * SQL výraz: součet faktury šablony `t` (celkem s DPH, per-line rounding,
+     * respektuje t.reverse_charge i t.prices_include_vat). Použit v list() pro
+     * per-řádek i agregaci.
+     *
+     * Režim „ceny s DPH" (t.prices_include_vat=1): unit_price_without_vat nese BRUTTO,
+     * takže řádkový součet s DPH = round(qty*unit_price,2) a NEpřičítáme DPH navrch
+     * (ta je už uvnitř). Jinak (zdola) přičteme DPH z báze (mimo reverse charge).
      */
     private const TEMPLATE_TOTAL_SQL =
         "((SELECT COALESCE(SUM(
                     ROUND(ri.quantity * ri.unit_price_without_vat, 2)
-                  + CASE WHEN t.reverse_charge = 1 THEN 0
+                  + CASE WHEN t.prices_include_vat = 1 OR t.reverse_charge = 1 THEN 0
                          ELSE ROUND(ROUND(ri.quantity * ri.unit_price_without_vat, 2) * vr.rate_percent / 100, 2) END
                  ), 0)
             FROM recurring_invoice_template_items ri

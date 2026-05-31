@@ -281,6 +281,100 @@ final class InvoiceMathTest extends TestCase
         self::assertSame(333.33, $displayNetUnit);
     }
 
+    public function testReceiptVatPayerGross1200ExactToCent(): void
+    {
+        // Účtenka u PLÁTCE DPH: 1× 1200 Kč včetně DPH @21 % (reálný případ z provozu).
+        // Koeficient: DPH = round(1200×21/121) = 208,26, základ = 991,74, celkem přesně 1200.
+        $r = InvoiceMath::compute([
+            ['quantity' => 1, 'unit_price_without_vat' => 1200.00, 'vat_rate_snapshot' => 21],
+        ], pricesIncludeVat: true);
+
+        self::assertSame(991.74,  $r['totals']['without_vat']);
+        self::assertSame(208.26,  $r['totals']['vat']);
+        self::assertSame(1200.00, $r['totals']['with_vat']);
+        // Zobrazené netto/ks = base/qty.
+        self::assertSame(991.74, round($r['items'][0]['base'] / 1.0, 2));
+    }
+
+    public function testReceiptNonVatPayerGrossEqualsNetNoTax(): void
+    {
+        // Účtenka u NEPLÁTCE DPH: žádná DPH (sazba 0). I když je zapnutý režim „ceny s DPH",
+        // brutto == netto a daň 0 — nesmí vzniknout fiktivní DPH ani změna ceny.
+        $r = InvoiceMath::compute([
+            ['quantity' => 2, 'unit_price_without_vat' => 300.00, 'vat_rate_snapshot' => 0],
+        ], pricesIncludeVat: true);
+
+        self::assertSame(600.00, $r['totals']['without_vat']);
+        self::assertSame(0.00,   $r['totals']['vat']);
+        self::assertSame(600.00, $r['totals']['with_vat']);
+        self::assertSame(0.0,    $r['vat_breakdown'][0]['rate']);
+        self::assertSame(0.00,   $r['vat_breakdown'][0]['vat']);
+    }
+
+    public function testSameGrossNumberInterpretedAsNetInflatesTotal(): void
+    {
+        // SIMULACE: unit_price_without_vat = 1200 (uživatel myslel cenu S DPH).
+        //  - Správně (režim s DPH): celek 1200, základ 991,74, DPH 208,26.
+        //  - Špatně (běžný režim, bere 1200 jako netto): celek 1452 → o 252 víc.
+        // Test dokumentuje, PROČ musí příznak prices_include_vat putovat se všemi kopiemi
+        // dokladu (proforma→faktura, dobropis, reissue) — jinak se totály nafouknou.
+        $items = [['quantity' => 1, 'unit_price_without_vat' => 1200.00, 'vat_rate_snapshot' => 21]];
+
+        $asGross = InvoiceMath::compute($items, pricesIncludeVat: true);
+        self::assertSame(1200.00, $asGross['totals']['with_vat']);
+        self::assertSame(208.26,  $asGross['totals']['vat']);
+
+        $asNet = InvoiceMath::compute($items); // běžná varianta (zdola)
+        self::assertSame(1452.00, $asNet['totals']['with_vat']);
+        self::assertSame(252.00,  $asNet['totals']['vat']);
+
+        // Rozdíl celku = 252 Kč — přesně nafouknutá DPH při záměně režimu.
+        self::assertSame(252.00, round($asNet['totals']['with_vat'] - $asGross['totals']['with_vat'], 2));
+    }
+
+    public function testReceiptVatPayerGrossMixedRatesRoundingResiduum(): void
+    {
+        // Účtenka plátce, více sazeb, ať se ověří per-sazba koeficient + haléřové reziduum.
+        // 3× 33 @21 % (gross 99 → DPH 17,18) + 2× 50 @12 % (gross 100 → DPH 10,71).
+        $r = InvoiceMath::compute([
+            ['quantity' => 3, 'unit_price_without_vat' => 33.00, 'vat_rate_snapshot' => 21],
+            ['quantity' => 2, 'unit_price_without_vat' => 50.00, 'vat_rate_snapshot' => 12],
+        ], pricesIncludeVat: true);
+
+        self::assertSame(199.00, $r['totals']['with_vat']); // 99 + 100 přesně
+        // 21 %: round(99×21/121)=17,18 ; 12 %: round(100×12/112)=10,71
+        self::assertSame(27.89, $r['totals']['vat']);
+        self::assertSame(171.11, $r['totals']['without_vat']);
+        // Invariant per sazba (klíčové pro KH/přiznání).
+        self::assertSame(17.18, $r['vat_breakdown'][0]['vat']);
+        self::assertSame(10.71, $r['vat_breakdown'][1]['vat']);
+    }
+
+    public function testTopDownCreditNoteNegativeQuantity(): void
+    {
+        // Dobropis v režimu „ceny s DPH": záporné množství, brutto cena. Koeficient musí
+        // dát záporný základ/daň a celek = záporné brutto (zrcadlí původní fakturu).
+        $r = InvoiceMath::compute([
+            ['quantity' => -1, 'unit_price_without_vat' => 1210.00, 'vat_rate_snapshot' => 21],
+        ], pricesIncludeVat: true);
+
+        self::assertSame(-1210.00, $r['totals']['with_vat']);
+        self::assertSame(-210.00,  $r['totals']['vat']);
+        self::assertSame(-1000.00, $r['totals']['without_vat']);
+    }
+
+    public function testBottomUpCreditNoteNegativeQuantity(): void
+    {
+        // Dobropis v běžném režimu (zdola): záporné množství, netto cena.
+        $r = InvoiceMath::compute([
+            ['quantity' => -2, 'unit_price_without_vat' => 500.00, 'vat_rate_snapshot' => 21],
+        ]);
+
+        self::assertSame(-1000.00, $r['totals']['without_vat']);
+        self::assertSame(-210.00,  $r['totals']['vat']);
+        self::assertSame(-1210.00, $r['totals']['with_vat']);
+    }
+
     public function testBottomUpUnchangedWhenFlagFalse(): void
     {
         // Regrese: stejná data zdola (default) vs. shora dají RŮZNÝ základ/daň —

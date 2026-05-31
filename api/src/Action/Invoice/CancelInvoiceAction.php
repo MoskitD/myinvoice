@@ -138,9 +138,9 @@ final class CancelInvoiceAction
             $stmt = $pdo->prepare(
                 'INSERT INTO invoices
                    (invoice_type, parent_invoice_id, client_id, project_id, supplier_id,
-                    issue_date, tax_date, due_date, currency_id, reverse_charge, language,
+                    issue_date, tax_date, due_date, currency_id, reverse_charge, prices_include_vat, language,
                     note_above_items, revenue_category_id, status, created_by)
-                 VALUES ("credit_note", ?, ?, ?, ?, CURDATE(), CURDATE(), CURDATE(), ?, ?, ?, ?, ?, "draft", ?)'
+                 VALUES ("credit_note", ?, ?, ?, ?, CURDATE(), CURDATE(), CURDATE(), ?, ?, ?, ?, ?, ?, "draft", ?)'
             );
             $stmt->execute([
                 $invoice['id'],
@@ -149,6 +149,9 @@ final class CancelInvoiceAction
                 (int) $invoice['supplier_id'],
                 (int) $invoice['currency_id'],
                 $invoice['reverse_charge'] ? 1 : 0,
+                // Dobropis musí dědit režim „ceny s DPH" — jinak by se zkopírované brutto
+                // jednotkové ceny přepočítaly jako netto (nafouknuté totály dobropisu).
+                !empty($invoice['prices_include_vat']) ? 1 : 0,
                 $invoice['language'],
                 $reason !== '' ? "Dobropis k faktuře {$invoice['varsymbol']}: $reason" : "Dobropis k faktuře {$invoice['varsymbol']}",
                 // Dobropis dědí kategorii tržby původní faktury (záporná tržba ve stejné kategorii).

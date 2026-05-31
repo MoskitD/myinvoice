@@ -503,6 +503,55 @@ final class RecurringGeneratorTest extends TestCase
         $this->assertEqualsWithDelta($expBase, (float) $invRow['total_without_vat'], 0.001);
     }
 
+    /**
+     * Souhrn šablony v list() (TEMPLATE_TOTAL_SQL) musí v režimu „ceny s DPH" brát
+     * brutto jako celek a NEpřičítat DPH navrch. Regrese: dříve počítal zdola →
+     * total nafouknutý o DPH (1210 → 1210 + DPH).
+     */
+    public function testListTemplateTotalRespectsPricesIncludeVat(): void
+    {
+        $today = (new \DateTimeImmutable('today'))->format('Y-m-d');
+        $tplId = $this->repo->create([
+            'supplier_id'      => $this->supplierId,
+            'client_id'        => $this->clientId,
+            'name'             => 'TEST list total s DPH (PHPUnit)',
+            'frequency'        => 'monthly',
+            'end_of_month'     => false,
+            'anchor_date'      => $today,
+            'next_run_date'    => $today,
+            'invoice_type'     => 'invoice',
+            'currency_id'      => $this->currencyId,
+            'language'         => 'cs',
+            'payment_method'   => 'bank_transfer',
+            'reverse_charge'   => false,
+            'prices_include_vat' => true,
+            'discount_percent' => 0.0,
+            'payment_due_days' => 14,
+            'increment_month_in_descriptions' => false,
+            'auto_issue'       => false,
+            'auto_send_email'  => false,
+        ], $this->userId);
+        $this->createdTemplateIds[] = $tplId;
+
+        $this->repo->replaceItems($tplId, [[
+            'description' => 'Paušál s DPH',
+            'quantity' => 1.0,
+            'unit' => 'ks',
+            'unit_price_without_vat' => 1210.00, // brutto
+            'vat_rate_id' => $this->vatRateId,
+            'order_index' => 0,
+        ]]);
+
+        $res = $this->repo->list(['client_id' => $this->clientId], 1, 0, '', []);
+        $row = null;
+        foreach ($res['data'] as $r) {
+            if ((int) $r['id'] === $tplId) { $row = $r; break; }
+        }
+        $this->assertNotNull($row, 'Šablona musí být v listu');
+        // Brutto 1210 → celek 1210, NE 1210 + DPH (starý bug).
+        $this->assertEqualsWithDelta(1210.00, (float) $row['total_with_vat'], 0.01);
+    }
+
     public function testGenerateForceDraftLeavesDraftDespiteAutoIssue(): void
     {
         // „Vygenerovat koncept" u at_issue šablony s auto_issue=true → přesto draft.
