@@ -347,6 +347,24 @@ Workflow:
 4. Vytvoří se **daňový doklad** typu „Faktura" s automatickým **odečtem
    zaplacené zálohy** (záporná položka „Odpočet zálohy 92605001").
 
+### 11.8.1 Zpětné propojení už existujících dokladů
+
+> Přidáno ve v4.8.0.
+
+Pokud už máš v systému **oba doklady samostatně** (typicky po importu) — zálohovou
+i daňovou fakturu — lze je spárovat zpětně, z **kterékoli** strany:
+
+- **V detailu daňového dokladu** (bez vazby): tlačítko **Spárovat se zálohou** → vyber
+  zálohovou fakturu téhož odběratele.
+- **V detailu zálohové faktury** (bez navázaného dokladu): tlačítko **Spárovat
+  s daňovým dokladem** → vyber daňový doklad.
+
+Tlačítko se nabídne jen tehdy, když u daného odběratele existuje vhodný **nespárovaný
+protějšek**. Po propojení se na obou dokladech zobrazí křížový odkaz a tlačítko **Zrušit
+propojení**; na daňový doklad se doplní **odečet zálohy** (`advance_paid_amount`), pokud
+byl nulový — nejvýše však do výše částky dokladu (aby „K úhradě" nešlo do mínusu).
+Zaplacení se nemění. Propojená záloha (proforma) zároveň vypadne z pohledávek/po splatnosti.
+
 ## 11.9 Storno vs. dobropis
 
 Pokud zjistíš, že vystavená faktura je špatně:

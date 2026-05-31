@@ -181,7 +181,9 @@ z příjmů). Proto je lze spárovat.
   zálohou „na 0 Kč" se napáruje správně).
 - Po spárování se zobrazí odkaz na zálohu a tlačítko **Zrušit propojení**. Na finální
   fakturu se zároveň doplní odečet zálohy (`advance_paid_amount`), pokud byl nulový.
-- V detailu **zálohy** vidíš reverzně, kterou fakturou je vyúčtována.
+- V detailu **zálohy** vidíš reverzně, kterou fakturou je vyúčtována. Nevyúčtovanou
+  zálohu lze spárovat i **odtud** — tlačítkem **Spárovat s fakturou** (nabídne
+  nepropojené vyúčtovací faktury téhož dodavatele). *(Obousměrné párování přidáno ve v4.8.0; tlačítka se zobrazí jen když existuje vhodný protějšek.)*
 
 Jedna záloha může být navázaná **jen na jednu** finální fakturu.
 

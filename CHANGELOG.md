@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.8.0] — 2026-05-31
+
+Zpětné a **obousměrné** párování záloh u vydaných i přijatých faktur, otevírání řádků seznamů v novém panelu a čitelnější ohraničení v tmavém režimu.
+
+### Added
+
+- **Zpětné propojení zálohy ⇄ daňového dokladu (vydané faktury)** — pokud už máš oba doklady samostatně (typicky po importu), spáruješ je zpětně z **kterékoli** strany: v detailu daňového dokladu tlačítkem **Spárovat se zálohou**, v detailu proformy tlačítkem **Spárovat s daňovým dokladem**. Vazba se ukládá na daňový doklad (`parent_invoice_id`); doplní se odečet zálohy (`advance_paid_amount`), pokud byl nulový, nejvýše do výše částky dokladu (aby „K úhradě" nešlo do mínusu). Zaplacení se nemění, propojená proforma vypadne z pohledávek. Tlačítka se zobrazí jen když u odběratele existuje vhodný nespárovaný protějšek.
+- **Obousměrné párování zálohy ⇄ vyúčtovací faktury (přijaté faktury)** — dosud šlo propojit jen z vyúčtovací faktury; nově i z detailu **zálohy** tlačítkem **Spárovat s fakturou**. Odpojení z obou stran. Tlačítka opět gated dle existence protějšku.
+- **Otevření řádku seznamu v novém panelu** — Ctrl/⌘+klik a kliknutí **prostředním tlačítkem** myši nyní otevřou detail v novém panelu (vydané faktury, přijaté faktury, klienti/dodavatelé, pravidelné fakturace). Běžný klik funguje beze změny, akční tlačítka v řádku zůstávají funkční.
+
+### Fixed
+
+- **Tmavý režim — nezřetelné ohraničení položek.** Políčka položek (vydané, přijaté i pravidelné faktury) používala slabší ohraničení než běžná pole formuláře (neutral-200 vs neutral-300) — sjednoceno na úroveň běžných inputů. Řádkové oddělovače položkových tabulek (včetně editoru a popupu **výkazu práce**) zvýšeny z prakticky neviditelné `neutral-100` na `neutral-200`.
+
 ## [4.7.5] — 2026-05-31
 
 Oprava importu z iDokladu — naimportovaly se vždy jen 3 záznamy od každé entity.
