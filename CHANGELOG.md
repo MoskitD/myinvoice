@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.9.2] — 2026-05-31
+
+Rekapitulace DPH se nově automaticky seedne z importovaného dokladu napříč všemi zdroji a oprava ISDOC exportu/importu dle oficiálního standardu 6.0.2 (typy dokladů a nedaňové doklady).
+
+### Added
+
+- **Automatická rekapitulace DPH z importovaného dokladu (§ 73 ZDPH).** Při importu přijaté faktury se rozpad DPH po sazbách nově převezme přímo z dokladu dodavatele a zapeče do uložené rekapitulace — sjednoceně ze všech zdrojů: ISDOC (`TaxTotal`), Pohoda (`invoiceSummary`), iDoklad (řádkové `Prices`) i AI extrakce z PDF. Nárok na odpočet tak sedí na částku daně uvedenou na dokladu. Drobné rozdíly se zapečou dle dokladu, větší se jen ohlásí jako varování (Fakturoid rozpad neposkytuje, proto se neseeduje).
+
+### Fixed
+
+- **ISDOC export — špatné typy dokladů.** `DocumentType` neodpovídal číselníku ISDOC 6.0.2: zálohová faktura se exportovala jako `2` (správně `4` — nedaňový zálohový list) a dobropis jako `5` (správně `2` — opravný daňový doklad). Účetní software tím dostával chybně zařazené doklady. Import čte typy reverzně shodně.
+- **ISDOC export — nedaňový doklad měl daňové řádky (pravidlo 4.1.5).** Zálohová faktura je nedaňový doklad (`VATApplicable=false`); nově se `VATApplicable=false` propisuje i do každé řádkové položky (`ClassifiedTaxCategory`), jak vyžaduje standard.
+- **ISDOC import — DPH z nedaňového dokladu.** Doklad či položka označené `VATApplicable=false` (neplátce DPH, nedaňový zálohový list) se nově importují s nulovou sazbou a prázdnou rekapitulací, takže se z nedaňového dokladu neeviduje DPH k odpočtu.
+
 ## [4.9.1] — 2026-05-31
 
 Kompletní oprava importu z iDokladu po auditu celého mapování proti oficiálnímu iDoklad v3 API (Solitea SDK) — částky, přílohy, měny, země, kurzy i čísla dokladů. Řeší [#80](https://github.com/radekhulan/myinvoice/issues/80).

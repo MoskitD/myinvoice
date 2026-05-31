@@ -137,14 +137,14 @@ XML;
 
     public function testProformaIsRecognized(): void
     {
-        $xml = str_replace('<DocumentType>1</DocumentType>', '<DocumentType>2</DocumentType>', $this->minimalIsdoc());
+        $xml = str_replace('<DocumentType>1</DocumentType>', '<DocumentType>4</DocumentType>', $this->minimalIsdoc());
         $result = $this->parser->parse($xml);
         self::assertSame('proforma', $result['invoices'][0]['invoice_type']);
     }
 
     public function testCreditNoteIsRecognized(): void
     {
-        $xml = str_replace('<DocumentType>1</DocumentType>', '<DocumentType>5</DocumentType>', $this->minimalIsdoc());
+        $xml = str_replace('<DocumentType>1</DocumentType>', '<DocumentType>2</DocumentType>', $this->minimalIsdoc());
         $result = $this->parser->parse($xml);
         self::assertSame('credit_note', $result['invoices'][0]['invoice_type']);
     }
@@ -175,6 +175,35 @@ XML;
         );
         $result = $this->parser->parse($xml);
         self::assertFalse($result['invoices'][0]['reverse_charge']);
+    }
+
+    public function testNonTaxDocumentZeroesLineVatRate(): void
+    {
+        // VATApplicable=false na dokladu (neplátce / nedaňový zálohový list) → dle ISDOC
+        // 4.1.5 jsou nedaňové i řádky, takže Percent (zde 21) NEimportujeme jako sazbu,
+        // ale jako 0. Zabraňuje nárokování DPH z nedaňového dokladu (feedback_tax_audit).
+        $xml = str_replace(
+            '<LocalCurrencyCode>CZK</LocalCurrencyCode>',
+            '<VATApplicable>false</VATApplicable><LocalCurrencyCode>CZK</LocalCurrencyCode>',
+            $this->minimalIsdoc()
+        );
+        $result = $this->parser->parse($xml);
+        $inv = $result['invoices'][0];
+        self::assertSame(0.0, $inv['items'][0]['vat_rate']);
+        self::assertSame([], $inv['vat_recap']);
+    }
+
+    public function testNonTaxLineZeroesVatRateOnTaxDocument(): void
+    {
+        // Obrácené pravidlo 4.1.5: na daňovém dokladu může být jednotlivá nedaňová
+        // položka (ClassifiedTaxCategory/VATApplicable=false) → její sazba je 0.
+        $xml = str_replace(
+            '<Percent>21</Percent>',
+            '<Percent>21</Percent><VATCalculationMethod>0</VATCalculationMethod><VATApplicable>false</VATApplicable>',
+            $this->minimalIsdoc()
+        );
+        $result = $this->parser->parse($xml);
+        self::assertSame(0.0, $result['invoices'][0]['items'][0]['vat_rate']);
     }
 
     // ─── Round-trip se schema-validním ISDOC 6.0.2 (od v3.6.2) ──────────────

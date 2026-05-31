@@ -490,7 +490,64 @@ final class IdokladImportService
             (string) ($payload['tax_date'] ?? $payload['issue_date'] ?? ''),
             $payload['exchange_rate'] ?? null,
         );
+
+        // Seed override rekapitulace DPH dle dokladu (§ 73). iDoklad nevrací globální
+        // rekapitulaci, ale per-řádek autoritativní Prices (TotalWithoutVat/TotalVat),
+        // takže ji poskládáme agregací po sazbě. Dokladovou slevu (materializovanou
+        // jako záporné řádky) přeskakujeme — per-řádkové Prices ji nezahrnují, takže
+        // by recap neseděl na náš (po-slevový) dopočet.
+        if ($docDiscountPercent <= 0.0) {
+            $docByRate = self::idokladVatRecap($i['Items'] ?? []);
+            if ($docByRate !== []) {
+                $this->purCalc->recompute($id);
+                $warning = (new PurchaseVatRecapSeeder($this->purchaseRepo, $this->purCalc))->seed(
+                    $id,
+                    $supplierId,
+                    $docByRate,
+                    $currencyCode,
+                    false,
+                );
+                if ($warning !== null) {
+                    try {
+                        $this->purchaseRepo->appendExtractionWarning($id, $supplierId, $warning);
+                    } catch (\Throwable) {
+                        // Varování je „nice to have".
+                    }
+                }
+            }
+        }
+
         return $id;
+    }
+
+    /**
+     * Poskládá rekapitulaci DPH po sazbách z iDoklad řádkových Prices (autoritativní
+     * hodnoty z iDokladu). Vrací rateKey => kladné `{base, vat}`. Když některý řádek
+     * Prices nemá, vrátí prázdné pole (neseedujeme z neúplných dat).
+     *
+     * @param array<int,array<string,mixed>> $lines
+     * @return array<string,array{base:float,vat:float}>
+     */
+    private static function idokladVatRecap(array $lines): array
+    {
+        $out = [];
+        foreach ($lines as $line) {
+            $rate = (float) ($line['VatRate'] ?? 0);
+            if ($rate <= 0.0) {
+                continue; // 0 % / osvobozeno → neseedujeme
+            }
+            $prices = $line['Prices'] ?? null;
+            if (!is_array($prices) || !isset($prices['TotalWithoutVat'], $prices['TotalVat'])) {
+                return []; // chybí autoritativní data → neseedovat
+            }
+            $key = number_format($rate, 2, '.', '');
+            if (!isset($out[$key])) {
+                $out[$key] = ['base' => 0.0, 'vat' => 0.0];
+            }
+            $out[$key]['base'] += abs((float) $prices['TotalWithoutVat']);
+            $out[$key]['vat']  += abs((float) $prices['TotalVat']);
+        }
+        return $out;
     }
 
     // ── Helpers ───────────────────────────────────────────────────────

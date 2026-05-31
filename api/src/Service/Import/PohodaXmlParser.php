@@ -151,7 +151,44 @@ final class PohodaXmlParser
             'project_number' => $projectNumber,
             'client'         => $client,
             'items'          => $items,
+            // Rekapitulace DPH po sazbách z <invoiceSummary> — pro seed override.
+            'vat_recap'      => $this->parseSummaryRecap($xpath, $invEl, $currency),
         ];
+    }
+
+    /**
+     * Rekapitulace DPH po sazbách z `<invoiceSummary>/<homeCurrency|foreignCurrency>`.
+     *
+     * Pohoda summary nese základ + DPH per sazbová „přihrádka" (high/low/3). Mapování
+     * na procenta drží stejné jako {@see parseItem()} (high=21, low=12, low2/3=10).
+     * U cizoměnové faktury čte `foreignCurrency` (částky v měně faktury). Vrací
+     * rateKey (`number_format(rate,2,'.','')`) => kladné `{base, vat}`.
+     *
+     * @return array<string,array{base:float,vat:float}>
+     */
+    private function parseSummaryRecap(\DOMXPath $xpath, \DOMElement $invEl, string $currency): array
+    {
+        $block = $currency !== 'CZK' ? 'inv:foreignCurrency' : 'inv:homeCurrency';
+        $sum = $xpath->query("inv:invoiceSummary/$block", $invEl)->item(0);
+        if (!$sum instanceof \DOMElement) {
+            return [];
+        }
+        $buckets = ['High' => 21.0, 'Low' => 12.0, '3' => 10.0];
+        $out = [];
+        foreach ($buckets as $suffix => $rate) {
+            $base = $this->text($xpath, "typ:price{$suffix}", $sum);
+            $vat  = $this->text($xpath, "typ:price{$suffix}VAT", $sum);
+            if ($base === '' && $vat === '') {
+                continue;
+            }
+            $baseF = abs((float) ($base !== '' ? $base : '0'));
+            $vatF  = abs((float) ($vat !== '' ? $vat : '0'));
+            if ($baseF <= 0.0 && $vatF <= 0.0) {
+                continue;
+            }
+            $out[number_format($rate, 2, '.', '')] = ['base' => $baseF, 'vat' => $vatF];
+        }
+        return $out;
     }
 
     /**

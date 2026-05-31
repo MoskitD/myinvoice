@@ -1123,6 +1123,31 @@ final class PurchaseInvoiceRepository
         )->execute([$warning, $id, $supplierId]);
     }
 
+    /**
+     * Přidá další varování k existujícímu (oddělené prázdným řádkem) místo přepsání.
+     * Prázdná faktura → nastaví jen nové; prázdný vstup → no-op. Pro importéry, které
+     * mohou přidat varování (rekapitulace DPH) vedle už existujícího (AI mismatch).
+     */
+    public function appendExtractionWarning(int $id, int $supplierId, string $warning): void
+    {
+        $warning = trim($warning);
+        if ($warning === '') {
+            return;
+        }
+        $pdo = $this->db->pdo();
+        $stmt = $pdo->prepare(
+            'SELECT extraction_warning FROM purchase_invoices WHERE id = ? AND supplier_id = ?'
+        );
+        $stmt->execute([$id, $supplierId]);
+        $current = $stmt->fetchColumn();
+        $combined = ($current === false || $current === null || trim((string) $current) === '')
+            ? $warning
+            : rtrim((string) $current) . "\n\n" . $warning;
+        $pdo->prepare(
+            'UPDATE purchase_invoices SET extraction_warning = ? WHERE id = ? AND supplier_id = ?'
+        )->execute([$combined, $id, $supplierId]);
+    }
+
     public function updateTotals(int $id, float $withoutVat, float $vat, float $withVat, float $rounding): void
     {
         $this->db->pdo()

@@ -118,6 +118,27 @@ final class IsdocToPurchaseInvoiceMapper
         $this->repo->replaceItems($id, $items);
         $this->calc->recompute($id);
 
+        // Seed override rekapitulace DPH dle dokladu (§ 73) — z <TaxTotal> (ISDOC)
+        // nebo <invoiceSummary> (Pohoda). Drobné rozdíly zapeče dle dokladu, větší
+        // jen ohlásí jako varování (PurchaseVatRecapSeeder). Stejný box jako AI.
+        $docByRate = (array) ($parsed['vat_recap'] ?? []);
+        if ($docByRate !== []) {
+            $warning = (new PurchaseVatRecapSeeder($this->repo, $this->calc))->seed(
+                $id,
+                $supplierId,
+                $docByRate,
+                (string) ($parsed['currency'] ?? 'CZK'),
+                $payload['document_kind'] === 'credit_note',
+            );
+            if ($warning !== null) {
+                try {
+                    $this->repo->appendExtractionWarning($id, $supplierId, $warning);
+                } catch (\Throwable) {
+                    // Varování je „nice to have" — faktura už je vytvořená správně.
+                }
+            }
+        }
+
         // Auto-ČNB kurz pro non-CZK fakturu pokud ISDOC neobsahoval explicitní kurz
         $this->cnbApplier->applyIfMissing(
             $id,

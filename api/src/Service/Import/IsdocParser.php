@@ -67,10 +67,14 @@ final class IsdocParser
      */
     private function parseInvoice(\DOMElement $root, \DOMXPath $xpath): array
     {
+        // DocumentType dle ISDOC 6.0.2 číselníku DocumentTypeType:
+        //   1 = faktura, 2 = dobropis, 3 = vrubopis, 4 = zálohová faktura (nedaňová),
+        //   5 = daňový zálohový list, 6 = dobropis DZL, 7 = zjednodušený daň. doklad.
+        // Dobropis i jeho zálohová varianta → credit_note; obě zálohové varianty → proforma.
         $docType = (int) ($this->text($xpath, 'i:DocumentType', $root) ?: '1');
         $invoiceType = match ($docType) {
-            2       => 'proforma',
-            5       => 'credit_note',
+            2, 6    => 'credit_note',
+            4, 5    => 'proforma',
             default => 'invoice',
         };
 
@@ -111,6 +115,12 @@ final class IsdocParser
             }
         }
 
+        // VATApplicable na úrovni dokladu: false = nedaňový doklad (neplátce DPH /
+        // plnění mimo DPH / nedaňový zálohový list, DocumentType 4). Dle ISDOC 4.1.5
+        // jsou pak nedaňové i všechny řádky → sazbu i rekapitulaci importujeme jako 0.
+        // Chybějící element = daňový doklad (legacy, default true).
+        $isTaxDocument = strtolower($this->text($xpath, 'i:VATApplicable', $root)) !== 'false';
+
         // Klient: AccountingCustomerParty/Party
         $partyEl = $xpath->query('i:AccountingCustomerParty/i:Party', $root)->item(0);
         $client = $partyEl instanceof \DOMElement ? $this->parseParty($xpath, $partyEl) : [];
@@ -137,7 +147,7 @@ final class IsdocParser
         $items = [];
         foreach ($xpath->query('i:InvoiceLines/i:InvoiceLine', $root) ?: [] as $lineEl) {
             if (!$lineEl instanceof \DOMElement) continue;
-            $items[] = $this->parseLine($xpath, $lineEl, $hasForeignCurrency);
+            $items[] = $this->parseLine($xpath, $lineEl, $hasForeignCurrency, $isTaxDocument);
         }
 
         return [
@@ -154,7 +164,51 @@ final class IsdocParser
             'client'         => $client,    // AccountingCustomerParty (zákazník)
             'supplier'       => $supplier,  // AccountingSupplierParty (dodavatel — pro purchase invoice mapper)
             'items'          => $items,
+            // Rekapitulace DPH po sazbách z <TaxTotal>/<TaxSubTotal> — pro seed
+            // override (PurchaseVatRecapSeeder), aby naše evidence seděla na doklad.
+            // Nedaňový doklad (VATApplicable=false) DPH nepřiznává → prázdná rekapitulace.
+            'vat_recap'      => $isTaxDocument ? $this->parseTaxRecap($xpath, $root) : [],
         ];
+    }
+
+    /**
+     * Rekapitulace DPH po sazbách z `<TaxTotal>/<TaxSubTotal>`.
+     *
+     * Vrací rateKey (`number_format(rate,2,'.','')`) => kladné `{base, vat}`.
+     * U cizoměnových dokladů preferuje `*Curr` varianty (TaxableAmountCurr/
+     * TaxAmountCurr), protože ty jsou v měně faktury — stejně jako naše řádkové
+     * totály; `TaxableAmount`/`TaxAmount` jsou dle ISDOC vždy v lokální měně (CZK).
+     * Sazba 0 % se vynechá (není co srovnávat).
+     *
+     * @return array<string,array{base:float,vat:float}>
+     */
+    private function parseTaxRecap(\DOMXPath $xpath, \DOMElement $root): array
+    {
+        $out = [];
+        foreach ($xpath->query('i:TaxTotal/i:TaxSubTotal', $root) ?: [] as $sub) {
+            if (!$sub instanceof \DOMElement) {
+                continue;
+            }
+            $percent = $this->text($xpath, 'i:TaxCategory/i:Percent', $sub);
+            if ($percent === '') {
+                continue;
+            }
+            $rate = (float) $percent;
+            if ($rate <= 0.0) {
+                continue;
+            }
+            $baseCurr = $this->text($xpath, 'i:TaxableAmountCurr', $sub);
+            $vatCurr  = $this->text($xpath, 'i:TaxAmountCurr', $sub);
+            $base = (float) (($baseCurr !== '' ? $baseCurr : $this->text($xpath, 'i:TaxableAmount', $sub)) ?: '0');
+            $vat  = (float) (($vatCurr !== '' ? $vatCurr : $this->text($xpath, 'i:TaxAmount', $sub)) ?: '0');
+            $key = number_format($rate, 2, '.', '');
+            if (!isset($out[$key])) {
+                $out[$key] = ['base' => 0.0, 'vat' => 0.0];
+            }
+            $out[$key]['base'] += abs($base);
+            $out[$key]['vat']  += abs($vat);
+        }
+        return $out;
     }
 
     /**
@@ -186,7 +240,7 @@ final class IsdocParser
     /**
      * @return array<string,mixed>
      */
-    private function parseLine(\DOMXPath $xpath, \DOMElement $line, bool $hasForeignCurrency = false): array
+    private function parseLine(\DOMXPath $xpath, \DOMElement $line, bool $hasForeignCurrency = false, bool $isTaxDocument = true): array
     {
         $qtyEl = $xpath->query('i:InvoicedQuantity', $line)->item(0);
         $quantity = $qtyEl instanceof \DOMElement ? (float) $qtyEl->textContent : 1.0;
@@ -228,6 +282,13 @@ final class IsdocParser
         }
 
         $vatRate = (float) ($this->text($xpath, 'i:ClassifiedTaxCategory/i:Percent', $line) ?: '0');
+        // ISDOC 4.1.5: nedaňová položka nepodléhá DPH bez ohledu na Percent. Řádek je
+        // nedaňový, je-li nedaňový celý doklad (VATApplicable=false) nebo má-li vlastní
+        // <ClassifiedTaxCategory><VATApplicable>false</VATApplicable></…>.
+        $lineVatApplicable = strtolower($this->text($xpath, 'i:ClassifiedTaxCategory/i:VATApplicable', $line));
+        if (!$isTaxDocument || $lineVatApplicable === 'false') {
+            $vatRate = 0.0;
+        }
 
         return [
             'description'            => $this->text($xpath, 'i:Item/i:Description', $line),

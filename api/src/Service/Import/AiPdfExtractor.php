@@ -425,10 +425,12 @@ final class AiPdfExtractor
         $id = $this->repo->createDraft($payload, $userId, $supplierId);
         $this->repo->replaceItems($id, $items);
         $this->calc->recompute($id);
-        // Naseeduj ruční rekapitulaci DPH dle dokladu (§ 73), pokud AI součty sedí
-        // v toleranci na vypočtené — uloží základ/DPH přesně dle dokladu dodavatele.
+        // Naseeduj ruční rekapitulaci DPH dle dokladu (§ 73) — uloží základ/DPH dle
+        // dokladu dodavatele. Varování (rozdíl > tolerance) zapíšeme až na konci, ať
+        // ho pozdější setExtractionWarning() (mismatch / neplátce) nepřepíše.
+        $vatRecapWarning = null;
         if (!$pricesIncludeVat) {
-            $this->seedVatOverridesFromDocument($id, $supplierId, $data, $isCredit);
+            $vatRecapWarning = $this->seedVatOverridesFromDocument($id, $supplierId, $data, $isCredit);
         }
         // Rounding počítáme AŽ TADY (po recompute) — vůči přesnému total z items,
         // ne vůči AI's hodnotě (AI dělá DPH math sama a občas se splete o haléř).
@@ -464,6 +466,16 @@ final class AiPdfExtractor
         // shodnou přijatou zálohu a NAVRHNI propojení (uživatel potvrdí v detailu).
         if ($documentKind !== 'advance') {
             $this->maybeSuggestAdvanceLink($id, $supplierId, $vendorId, $data);
+        }
+        // Varování z rekapitulace DPH (seed) přidáme až teď — po mismatch/neplátce
+        // zápisech, které používají setExtractionWarning() (overwrite); append ho
+        // tak nepřepíšou a uživatel vidí obě hlášky.
+        if ($vatRecapWarning !== null && $vatRecapWarning !== '') {
+            try {
+                $this->repo->appendExtractionWarning($id, $supplierId, $vatRecapWarning);
+            } catch (\Throwable) {
+                // Varování je „nice to have" — faktura už je vytvořená správně.
+            }
         }
         return $id;
     }
@@ -864,99 +876,18 @@ final class AiPdfExtractor
     }
 
     /**
-     * Naseeduje ruční rekapitulaci DPH (§ 73 ZDPH) z AI dat, pokud doklad uvádí
-     * rekapitulaci po sazbách (`vat_recap`) NEBO je jednosazbový (fallback z celkových
-     * součtů) a hodnoty sedí v toleranci na vypočtené. Uloží základ/DPH PŘESNĚ DLE
-     * DOKLADU per sazba a znovu přepočte — řádkové totály pak odpovídají dokladu
-     * dodavatele (klíčové pro odpočet, § 73 odst. 6).
+     * Naseeduje ruční rekapitulaci DPH (§ 73 ZDPH) z AI dat přes sdílený
+     * {@see PurchaseVatRecapSeeder} (stejná logika jako ISDOC/Pohoda/iDoklad import).
      *
-     * Aplikuje se jen v režimu ZDOLA (v režimu shora celek sedí koeficientem) a na
-     * běžné faktury (ne dobropisy — znaménka). Seedují se jen sazby, jejichž rozdíl
-     * vůči výpočtu je do ~1 Kč (haléřový drift); větší rozdíl = jiný problém
-     * (řeší maybeFlagTotalsMismatch) → ta sazba se ponechá vypočtená.
+     * Zdroj cílové rekapitulace: explicitní AI `vat_recap` (po sazbách); fallback na
+     * celkové součty řeší seeder u jednosazbového dokladu. Vrací varovný text (rozdíl
+     * dokladu vs dopočtu nad tolerancí), který volající zapíše až po ostatních
+     * varováních (aby se nepřepsal). Override + recompute provede seeder sám.
      */
-    private function seedVatOverridesFromDocument(int $id, int $supplierId, array $data, bool $isCredit): void
+    private function seedVatOverridesFromDocument(int $id, int $supplierId, array $data, bool $isCredit): ?string
     {
-        if ($isCredit) {
-            return;
-        }
-        $invoice = $this->repo->find($id, $supplierId);
-        if ($invoice === null) {
-            return;
-        }
-
-        // Vypočtená rekapitulace per sazba (po recompute): rateKey => [rate, base, vat].
-        $computed = [];
-        foreach ($invoice['vat_breakdown'] ?? [] as $b) {
-            $rate = (float) ($b['vat_rate'] ?? 0);
-            if ($rate <= 0.0) {
-                continue; // 0 % / osvobozeno → není co srovnávat
-            }
-            $computed[number_format($rate, 2, '.', '')] = [
-                'rate' => $rate,
-                'base' => (float) ($b['without_vat'] ?? 0),
-                'vat'  => (float) ($b['vat'] ?? 0),
-            ];
-        }
-        if ($computed === []) {
-            return;
-        }
-
-        // Cílová rekapitulace z dokladu: preferuj explicitní `vat_recap` (multi-rate),
-        // fallback na celkové součty (jen jednosazbový doklad).
-        $docByRate = self::documentVatRecap($data, $computed);
-        if ($docByRate === []) {
-            return;
-        }
-
-        $overrides = [];
-        foreach ($docByRate as $key => $doc) {
-            if (!isset($computed[$key])) {
-                continue; // sazba z dokladu, která na faktuře není → ignoruj
-            }
-            $c = $computed[$key];
-            $baseDiff = abs($c['base'] - $doc['base']);
-            $vatDiff  = abs($c['vat'] - $doc['vat']);
-            // Jen haléřový drift (do 1 Kč) a jen když se liší (jinak by override byl no-op).
-            if ($baseDiff > 1.0 || $vatDiff > 1.0 || ($baseDiff === 0.0 && $vatDiff === 0.0)) {
-                continue;
-            }
-            $overrides[] = ['rate' => $c['rate'], 'base' => $doc['base'], 'vat' => $doc['vat']];
-        }
-        if ($overrides === []) {
-            return;
-        }
-
-        try {
-            $this->repo->setVatOverrides($id, $supplierId, $overrides);
-            $this->calc->recompute($id);
-            $this->logger->info('AI extractor: naseedován override rekapitulace DPH dle dokladu', [
-                'invoice_id' => $id,
-                'rates'      => array_column($overrides, 'rate'),
-            ]);
-        } catch (\Throwable $e) {
-            $this->logger->warning('AI extractor: seedVatOverridesFromDocument selhalo', [
-                'invoice_id' => $id,
-                'error'      => $e->getMessage(),
-            ]);
-        }
-    }
-
-    /**
-     * Sestaví cílovou rekapitulaci DPH z dokladu jako rateKey => ['base','vat'].
-     * Priorita: AI `vat_recap` (rekapitulace po sazbách). Fallback: u JEDNOSAZBOVÉHO
-     * dokladu odvoď z celkových součtů (total_without_vat → base, total_with_vat − base
-     * → vat). Všechny hodnoty kladné (znaménko řeší importér dle document_kind).
-     *
-     * @param array<string,mixed> $data
-     * @param array<string,array{rate: float, base: float, vat: float}> $computed
-     * @return array<string,array{base: float, vat: float}>
-     */
-    private static function documentVatRecap(array $data, array $computed): array
-    {
-        // 1) Explicitní rekapitulace po sazbách z AI (multi-rate).
-        if (isset($data['vat_recap']) && is_array($data['vat_recap']) && $data['vat_recap'] !== []) {
-            $out = [];
+        $docByRate = [];
+        if (isset($data['vat_recap']) && is_array($data['vat_recap'])) {
             foreach ($data['vat_recap'] as $r) {
                 if (!is_array($r) || !isset($r['rate'], $r['base'], $r['vat'])) {
                     continue;
@@ -965,31 +896,22 @@ final class AiPdfExtractor
                 if ($rate <= 0.0) {
                     continue;
                 }
-                $out[number_format($rate, 2, '.', '')] = [
+                $docByRate[number_format($rate, 2, '.', '')] = [
                     'base' => abs((float) $r['base']),
                     'vat'  => abs((float) $r['vat']),
                 ];
             }
-            if ($out !== []) {
-                return $out;
-            }
         }
 
-        // 2) Fallback: jednosazbový doklad → odvoď z celkových součtů.
-        if (count($computed) !== 1) {
-            return [];
-        }
-        $aiBase  = isset($data['total_without_vat']) ? abs((float) $data['total_without_vat']) : null;
-        $aiTotal = isset($data['total_with_vat'])    ? abs((float) $data['total_with_vat'])    : null;
-        if ($aiBase === null || $aiTotal === null || $aiBase <= 0.0) {
-            return [];
-        }
-        $docVat = round($aiTotal - $aiBase, 2);
-        if ($docVat < 0.0) {
-            return [];
-        }
-        $key = (string) array_key_first($computed);
-        return [$key => ['base' => $aiBase, 'vat' => $docVat]];
+        return (new PurchaseVatRecapSeeder($this->repo, $this->calc, $this->logger))->seed(
+            $id,
+            $supplierId,
+            $docByRate,
+            (string) ($data['currency'] ?? 'CZK'),
+            $isCredit,
+            isset($data['total_without_vat']) ? abs((float) $data['total_without_vat']) : null,
+            isset($data['total_with_vat']) ? abs((float) $data['total_with_vat']) : null,
+        );
     }
 
     /**

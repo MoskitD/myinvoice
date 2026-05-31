@@ -65,6 +65,51 @@ final class IsdocExporterSchemaTest extends TestCase
         ])));
     }
 
+    // ─── DocumentType číselník (ISDOC 6.0.2) + nedaňový doklad (4.1.5) ───
+
+    public function testCreditNoteIsDocumentType2(): void
+    {
+        $xml = $this->exporter->buildXml($this->invoice(['invoice_type' => 'credit_note']));
+        self::assertSame('2', $this->xpathOne($xml, '//i:Invoice/i:DocumentType'));
+    }
+
+    public function testProformaIsDocumentType4AndNonTax(): void
+    {
+        // Zálohová faktura = nedaňový zálohový list (DocumentType 4). Dle ISDOC 4.1.5 musí
+        // být doklad i všechny jeho řádky nedaňové → VATApplicable=false na úrovni dokladu
+        // i uvnitř každého ClassifiedTaxCategory. Výstup musí být validní vůči XSD.
+        $xml = $this->exporter->buildXml($this->invoice([
+            'invoice_type' => 'proforma',
+            'items'        => [
+                $this->item(['description' => 'Vývoj', 'quantity' => 10.0, 'unit_price_without_vat' => 1000.0]),
+                $this->item(['description' => 'Konzultace', 'quantity' => 2.0, 'unit_price_without_vat' => 1500.0, 'vat_rate_snapshot' => 12.0]),
+            ],
+            'vat_breakdown' => [
+                ['rate' => 21.0, 'base' => 10000.0, 'vat' => 2100.0],
+                ['rate' => 12.0, 'base' => 3000.0,  'vat' => 360.0],
+            ],
+            'totals'        => ['without_vat' => 13000.0, 'with_vat' => 15460.0, 'rounding' => 0.0],
+            'amount_to_pay' => 15460.0,
+        ]));
+
+        $this->assertValidIsdoc($xml);
+        self::assertSame('4', $this->xpathOne($xml, '//i:Invoice/i:DocumentType'));
+        self::assertSame('false', $this->xpathOne($xml, '//i:Invoice/i:VATApplicable'));
+
+        // 4.1.5: každý řádek nedaňový — VATApplicable=false v ClassifiedTaxCategory.
+        self::assertSame(2, $this->xpathCount($xml, '//i:InvoiceLine'));
+        self::assertSame(2, $this->xpathCount($xml, '//i:InvoiceLine/i:ClassifiedTaxCategory[i:VATApplicable="false"]'));
+    }
+
+    public function testTaxInvoiceLinesOmitVatApplicable(): void
+    {
+        // Obrácené pravidlo neplatí: na daňovém dokladu řádky VATApplicable mít nemusejí
+        // (vynecháváme ho → položka je daňová). Pojistka proti regresi 4.1.5 do druhé strany.
+        $xml = $this->exporter->buildXml($this->invoice());
+        self::assertSame('true', $this->xpathOne($xml, '//i:Invoice/i:VATApplicable'));
+        self::assertSame(0, $this->xpathCount($xml, '//i:InvoiceLine/i:ClassifiedTaxCategory/i:VATApplicable'));
+    }
+
     public function testReverseChargeInvoiceIsSchemaValid(): void
     {
         $this->assertValidIsdoc($this->exporter->buildXml($this->invoice([
@@ -164,6 +209,16 @@ final class IsdocExporterSchemaTest extends TestCase
         $xp->registerNamespace('i', 'http://isdoc.cz/namespace/2013');
         $node = $xp->query($expr)->item(0);
         return $node?->textContent;
+    }
+
+    /** Počet uzlů odpovídajících XPath výrazu (namespace `i:`). */
+    private function xpathCount(string $xml, string $expr): int
+    {
+        $dom = new \DOMDocument();
+        $dom->loadXML($xml);
+        $xp = new \DOMXPath($dom);
+        $xp->registerNamespace('i', 'http://isdoc.cz/namespace/2013');
+        return $xp->query($expr)->length;
     }
 
     /**
