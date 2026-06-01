@@ -30,6 +30,8 @@ use Psr\Http\Message\ServerRequestInterface as Request;
  */
 final class IssueInvoiceAction
 {
+    use HandlesVarsymbolDuplicate;
+
     public function __construct(
         private readonly InvoiceRepository $repo,
         private readonly Connection $db,
@@ -106,7 +108,7 @@ final class IssueInvoiceAction
         } else {
             try {
                 $varsymbol = $this->varsymbol->next($supplierId, $invoice['invoice_type'], $issueDate, (int) $invoice['client_id']);
-            } catch (\InvalidArgumentException $e) {
+            } catch (\InvalidArgumentException | \RuntimeException $e) {
                 return Json::error($response, 'varsymbol_failed', $e->getMessage(), 500);
             }
         }
@@ -126,13 +128,23 @@ final class IssueInvoiceAction
                 status            = "issued"
              WHERE id = ? AND status = "draft"'
         );
-        $stmt->execute([
-            $varsymbol,
-            json_encode($snapshots['client'],   JSON_UNESCAPED_UNICODE),
-            json_encode($snapshots['supplier'], JSON_UNESCAPED_UNICODE),
-            $snapshots['bank'] !== null ? json_encode($snapshots['bank'], JSON_UNESCAPED_UNICODE) : null,
-            $id,
-        ]);
+        try {
+            $stmt->execute([
+                $varsymbol,
+                json_encode($snapshots['client'],   JSON_UNESCAPED_UNICODE),
+                json_encode($snapshots['supplier'], JSON_UNESCAPED_UNICODE),
+                $snapshots['bank'] !== null ? json_encode($snapshots['bank'], JSON_UNESCAPED_UNICODE) : null,
+                $id,
+            ]);
+        } catch (\PDOException $e) {
+            // Poslední pojistka proti porušení unique indexu (supplier_id, varsymbol) — typicky
+            // souběžné vystavení nebo číslo, které proklouzlo kontrolami. Generátor se sice
+            // duplicitám aktivně vyhýbá, ale DB constraint je definitivní ochrana proti race.
+            if ($dupMsg = self::varsymbolDuplicateMessage($e, $varsymbol)) {
+                return Json::error($response, 'varsymbol_duplicate', $dupMsg, 409);
+            }
+            throw $e;
+        }
 
         if ($stmt->rowCount() === 0) {
             return Json::error($response, 'race_condition', 'Faktura byla mezitím změněna.', 409);

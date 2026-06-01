@@ -1294,6 +1294,9 @@ async function deleteDraft() {
               <p v-if="!form.varsymbol && !varsymbolAutoHasTemplate" class="text-xs text-warning-600 mt-1">
                 {{ t('invoice.varsymbol_no_template') }}
               </p>
+              <p v-else-if="form.varsymbol.trim()" class="text-xs text-warning-600 mt-1">
+                {{ t('invoice.varsymbol_manual_warning') }}
+              </p>
               <p v-else class="text-xs text-neutral-500 mt-1">{{ t('invoice.varsymbol_hint') }}</p>
             </div>
             <div v-else-if="editedVarsymbol" class="rounded-md bg-neutral-50 border border-neutral-200 p-3 text-sm">

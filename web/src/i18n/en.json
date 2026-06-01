@@ -750,6 +750,7 @@
     "negative_item_hint": "Enter a discount as a negative quantity or a negative unit price. The final amount due must stay positive.",
     "amount_positive_required": "Amount due must be greater than 0. Use a credit note for a zero or negative document.",
     "varsymbol_no_template": "No format set — go to Settings → Invoice numbering, or fill in manually.",
+    "varsymbol_manual_warning": "A manual number bypasses the automatic series — the counter won't advance and you're responsible for its uniqueness and continuity. Leave empty to auto-generate.",
     "varsymbol_too_long": "Number is max 20 characters.",
     "new": "+ New invoice",
     "issue_first": "Issue first",
