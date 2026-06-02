@@ -56,18 +56,21 @@ final class StatementMatcher
      *
      * @return array{expected: float, exact: float, partial: float}|null
      */
-    private function expectedMatch(float $invoiceAmount, string $invoiceCcy, float $rate, ?string $txCurrency): ?array
+    private function expectedMatch(float $invoiceAmount, string $invoiceCcy, float $rate, ?string $txCurrency, ?float $exactTolerance = null): ?array
     {
+        $exact = $exactTolerance !== null && $exactTolerance >= 0.0
+            ? $exactTolerance
+            : self::EXACT_MATCH_TOLERANCE;
         // Neznámá měna transakce (legacy výpisy) nebo shodná měna → přímé porovnání.
         if ($txCurrency === null || strtoupper($txCurrency) === strtoupper($invoiceCcy)) {
-            return ['expected' => $invoiceAmount, 'exact' => self::EXACT_MATCH_TOLERANCE, 'partial' => self::PARTIAL_MATCH_TOLERANCE];
+            return ['expected' => $invoiceAmount, 'exact' => $exact, 'partial' => max($exact, self::PARTIAL_MATCH_TOLERANCE)];
         }
         // Tuzemská platba cizoměnové faktury → přepočet kurzem faktury (CZK = částka × kurz).
         // Relativní tolerance kvůli kurzovému driftu; partial tier zde nemá smysl (= exact).
         if (strtoupper($txCurrency) === self::LOCAL_CURRENCY) {
             $r = $rate > 0 ? $rate : 1.0;
             $czk = $invoiceAmount * $r;
-            $tol = max(self::EXACT_MATCH_TOLERANCE, $czk * self::FX_MATCH_TOLERANCE_PCT);
+            $tol = max($exact, $czk * self::FX_MATCH_TOLERANCE_PCT);
             return ['expected' => $czk, 'exact' => $tol, 'partial' => $tol];
         }
         // Cizoměnový účet × jiná měna faktury (např. EUR výpis × CZK/USD faktura) — skip.
@@ -104,6 +107,9 @@ final class StatementMatcher
         // Outgoing (amount < 0) → match na purchase_invoice (přijatou) — fáze 3.
         // Incoming (amount > 0) → match na invoice (vydanou) — existing flow.
         $isOutgoing = $amount < 0;
+        $exactTolerance = isset($row['match_tolerance']) && $row['match_tolerance'] !== null
+            ? max(0.0, (float) $row['match_tolerance'])
+            : null;
 
         // Určení supplier_id z bank účtu (currencies.account_number + bank_code).
         // Normalizace přes AccountNumberNormalizer (řeší zero-padding a prefix).
@@ -172,7 +178,7 @@ final class StatementMatcher
             return ['status' => 'unmatched', 'reason' => 'no_invoice_with_vs', 'tx_currency' => $txCurrency];
         }
 
-        $m = $this->expectedMatch((float) $inv['amount_to_pay'], (string) $inv['currency'], (float) ($inv['exchange_rate'] ?: 0), $txCurrency);
+        $m = $this->expectedMatch((float) $inv['amount_to_pay'], (string) $inv['currency'], (float) ($inv['exchange_rate'] ?: 0), $txCurrency, $exactTolerance);
         if ($m === null) {
             return ['status' => 'unmatched', 'reason' => 'currency_mismatch',
                     'tx_currency' => $txCurrency, 'invoice_currency' => $inv['currency']];

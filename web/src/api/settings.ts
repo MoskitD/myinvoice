@@ -105,6 +105,94 @@ export interface CurrencyAccount {
   invoices_count?: number
 }
 
+export interface BankEmailImapSettings {
+  id: number | null
+  supplier_id: number
+  name: string
+  enabled: boolean
+  host: string
+  port: number
+  encryption: 'ssl' | 'tls' | 'none'
+  validate_cert: boolean
+  require_email_auth: boolean
+  email_auth_serv_id: string | null
+  username: string
+  folder: string
+  max_messages_per_run: number
+  process_from_date: string | null
+  success_action: 'none' | 'add_flag' | 'move' | 'mark_seen'
+  success_flag: string | null
+  success_move_folder: string | null
+  failure_action: 'none' | 'add_flag' | 'move'
+  failure_flag: string | null
+  failure_move_folder: string | null
+  retry_failed: boolean
+  max_attempts: number
+  has_password: boolean
+  last_scan_at?: string | null
+  last_scan_status?: 'ok' | 'error' | null
+  last_scan_message?: string | null
+}
+
+export interface BankEmailProvider {
+  id: number
+  supplier_id: number | null
+  code: string
+  name: string
+  parser_type: 'regex' | 'raiffeisenbank'
+  enabled: boolean
+  sender_whitelist: string | null
+  subject_pattern: string | null
+  body_pattern: string | null
+  field_patterns: Record<string, string> | null
+  normalizer_config: Record<string, unknown> | null
+}
+
+export interface BankEmailAccountMapping {
+  id: number | null
+  currency_id: number
+  currency_code: string
+  label: string
+  account_number: string | null
+  bank_code: string | null
+  bank_name: string | null
+  imap_account_id: number | null
+  imap_account_name?: string | null
+  provider_id: number | null
+  enabled: boolean
+  amount_tolerance: number
+  provider_code: string | null
+  provider_name: string | null
+}
+
+export interface BankEmailProcessedMessage {
+  id: number
+  imap_account_id: number | null
+  imap_account_name?: string | null
+  imap_uid: number | null
+  message_id: string | null
+  fallback_hash: string
+  message_date: string | null
+  sender: string | null
+  subject: string | null
+  provider_code: string | null
+  status: string
+  parsed_payload: Record<string, any> | null
+  bank_transaction_id: number | null
+  matched_invoice_id: number | null
+  matched_varsymbol?: string | null
+  error_message: string | null
+  processed_at: string
+}
+
+export interface BankEmailOverview {
+  imap: BankEmailImapSettings
+  imap_accounts: BankEmailImapSettings[]
+  providers: BankEmailProvider[]
+  mappings: BankEmailAccountMapping[]
+  messages: BankEmailProcessedMessage[]
+}
+
 export interface VatRate {
   id: number
   code: string
@@ -323,6 +411,45 @@ export const settingsApi = {
   updateCurrency: (id: number, payload: Partial<CurrencyAccount>) =>
     api.put<CurrencyAccount>(`/settings/currencies/${id}`, payload).then(r => r.data),
   deleteCurrency: (id: number) => api.delete(`/settings/currencies/${id}`).then(r => r.data),
+
+  getBankEmailOverview: () =>
+    api.get<BankEmailOverview>('/settings/bank-email-notices').then(r => r.data),
+  updateBankEmailImap: (payload: Partial<BankEmailImapSettings> & { password?: string }) =>
+    api.put<BankEmailImapSettings>('/settings/bank-email-notices/imap', payload).then(r => r.data),
+  testBankEmailImap: () =>
+    api.post<{ ok: boolean; message: string; folders?: string[] }>('/settings/bank-email-notices/imap/test', {}).then(r => r.data),
+  createBankEmailImapAccount: (payload: Partial<BankEmailImapSettings> & { password?: string }) =>
+    api.post<BankEmailImapSettings>('/settings/bank-email-notices/imap-accounts', payload).then(r => r.data),
+  updateBankEmailImapAccount: (id: number, payload: Partial<BankEmailImapSettings> & { password?: string }) =>
+    api.put<BankEmailImapSettings>(`/settings/bank-email-notices/imap-accounts/${id}`, payload).then(r => r.data),
+  deleteBankEmailImapAccount: (id: number) =>
+    api.delete<{ deleted: boolean }>(`/settings/bank-email-notices/imap-accounts/${id}`).then(r => r.data),
+  testBankEmailImapAccount: (id: number) =>
+    api.post<{ ok: boolean; message: string; folders?: string[] }>(`/settings/bank-email-notices/imap-accounts/${id}/test`, {}).then(r => r.data),
+  browseBankEmailImapFolders: (payload: Partial<BankEmailImapSettings> & { password?: string }, id?: number | null) =>
+    api.post<{ ok: boolean; message: string; folders?: string[] }>(
+      id ? `/settings/bank-email-notices/imap-accounts/${id}/folders` : '/settings/bank-email-notices/imap-accounts/folders',
+      payload,
+    ).then(r => r.data),
+  createBankEmailProvider: (payload: Partial<BankEmailProvider>) =>
+    api.post<BankEmailProvider>('/settings/bank-email-notices/providers', payload).then(r => r.data),
+  updateBankEmailProvider: (id: number, payload: Partial<BankEmailProvider>) =>
+    api.put<BankEmailProvider>(`/settings/bank-email-notices/providers/${id}`, payload).then(r => r.data),
+  deleteBankEmailProvider: (id: number) =>
+    api.delete<{ deleted: boolean }>(`/settings/bank-email-notices/providers/${id}`).then(r => r.data),
+  updateBankEmailMappings: (mappings: Partial<BankEmailAccountMapping>[]) =>
+    api.put<BankEmailAccountMapping[]>('/settings/bank-email-notices/mappings', { mappings }).then(r => r.data),
+  testBankEmailParser: (payload: { provider_id?: number | null; sender?: string; subject?: string; text: string }) =>
+    api.post<{ provider: Pick<BankEmailProvider, 'id' | 'code' | 'name' | 'parser_type'>; parsed: Record<string, any> }>(
+      '/settings/bank-email-notices/parser/test',
+      payload,
+    ).then(r => r.data),
+  scanBankEmailNotices: (limit?: number) =>
+    api.post<Record<string, any>>('/settings/bank-email-notices/scan', limit ? { limit } : {}).then(r => r.data),
+  listBankEmailMessages: () =>
+    api.get<BankEmailProcessedMessage[]>('/settings/bank-email-notices/messages').then(r => r.data),
+  deleteBankEmailMessage: (id: number) =>
+    api.delete<{ deleted: boolean }>(`/settings/bank-email-notices/messages/${id}`).then(r => r.data),
 
   listVatRates:   () => api.get<VatRate[]>('/settings/vat-rates').then(r => r.data),
   createVatRate:  (p: Partial<VatRate>) => api.post('/settings/vat-rates', p).then(r => r.data),

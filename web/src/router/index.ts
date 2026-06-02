@@ -39,6 +39,8 @@ const routes: RouteRecordRaw[] = [
       { path: 'admin/cron-jobs',        name: 'cron-jobs',      component: () => import('@/pages/admin/CronJobs.vue'),    meta: { adminOnly: true } },
       { path: 'admin/users',            name: 'admin-users',    component: () => import('@/pages/admin/Users.vue'),       meta: { adminOnly: true } },
       { path: 'admin/settings',         name: 'admin-settings', component: () => import('@/pages/admin/Settings.vue'),    meta: { adminOnly: true } },
+      { path: 'admin/bank-accounts',    name: 'admin-bank-accounts', component: () => import('@/pages/admin/BankAccounts.vue'), meta: { adminOnly: true } },
+      { path: 'admin/bank-email-notices', name: 'admin-bank-email-notices', redirect: '/admin/bank-accounts' },
       // /admin/suppliers byla samostatná stránka — Suppliers jsou nyní embedded jako první tab v Codebooks.
       // Redirect zachovává bookmarks / staré odkazy.
       { path: 'admin/suppliers',        name: 'admin-suppliers', redirect: '/admin/codebooks' },

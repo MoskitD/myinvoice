@@ -587,6 +587,7 @@ V `cmd/` jsou připravené `.cmd` (Windows Task Scheduler) i `.sh` (Linux cron) 
 | `cron-cleanup` | 1× denně 03:00 |
 | `cron-backup` | 1× denně 02:00 |
 | `cron-bank-scan` | každých 30 min |
+| `cron-bank-email-notices` | každých 30 min |
 | `cron-send-reminders` | 1× denně 09:00, Po–Pá |
 
 Detaily v `cmd/README.md`.

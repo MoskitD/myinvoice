@@ -37,7 +37,7 @@ nasazuje). Zbytek je psaný pro běžného uživatele — bez programátorského
 
 ### Platby a komunikace
 
-13. [Banka — import výpisů a párování plateb](13_Banka.md)
+13. [Banka — import výpisů, e-mailová avíza a párování plateb](13_Banka.md)
 14. [Upomínky po splatnosti](14_Upominky.md)
 15. [Pravidelné fakturace (recurring invoices)](15_Pravidelne_fakturace.md)
 

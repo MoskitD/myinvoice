@@ -106,6 +106,13 @@ final class Bootstrap
                 $c->get(\MyInvoice\Repository\EmailTemplateRepository::class),
                 $c->get(\MyInvoice\Service\Signing\Email\EmailSigningService::class),
             ),
+            \MyInvoice\Service\Bank\EmailNotice\ImapMailboxClientInterface::class => fn (ContainerInterface $c) => new \MyInvoice\Service\Bank\EmailNotice\WebklexImapMailboxClient(
+                $c->get(\MyInvoice\Service\Bank\EmailNotice\EmailNoticeTextNormalizer::class),
+            ),
+            \MyInvoice\Service\Bank\StatementMatcher::class => fn (ContainerInterface $c) => new \MyInvoice\Service\Bank\StatementMatcher(
+                $c->get(Connection::class),
+                $c->get(\MyInvoice\Service\Invoice\FinalFromProformaCreator::class),
+            ),
 
             // IpMatcher má v konstruktoru volitelný `?Config $config = null`. Autowiring
             // takový parametr neresolvuje (dosadí default null), takže clientIpFromRequest()
