@@ -14,7 +14,7 @@ import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 import ClientFormModal from '@/components/modals/ClientFormModal.vue'
 import ProjectFormModal from '@/components/modals/ProjectFormModal.vue'
 
-const { t } = useI18n()
+const { t, tm, rt } = useI18n()
 const toast = useToast()
 const route = useRoute()
 const router = useRouter()
@@ -31,6 +31,12 @@ const tplId = computed(() => (isEdit.value ? Number(route.params.id) : null))
 const loading = ref(false)
 const submitting = ref(false)
 const error = ref('')
+
+// Inline nápověda placeholderů ({YYYY}, {DATE}…) v popisech položek — defaultně zabalená.
+const placeholdersHelpOpen = ref(false)
+const placeholderRows = computed(() =>
+  (tm('recurring.placeholders_rows') as { c: string; d: string }[]).map(r => ({ c: rt(r.c), d: rt(r.d) }))
+)
 
 const clients = ref<Client[]>([])  // akumulovaná cache (výsledky hledání + vybraný)
 // Server-side našeptávač klientů (zákazníků) — SearchableSelect remote.
@@ -780,7 +786,28 @@ async function submit() {
             {{ t('invoice.add_item') }}
           </button>
         </div>
-        <p class="mb-3 text-xs text-neutral-500">{{ t('invoice.negative_item_hint') }}</p>
+        <p class="mb-1 text-xs text-neutral-500">{{ t('invoice.negative_item_hint') }}</p>
+
+        <!-- Placeholdery období (#108) — defaultně zabalená nápověda -->
+        <div class="mb-3">
+          <button type="button" @click="placeholdersHelpOpen = !placeholdersHelpOpen"
+            class="cursor-pointer inline-flex items-center gap-1 text-xs text-primary-700 hover:text-primary-800">
+            <svg :class="['w-3 h-3 transition-transform', placeholdersHelpOpen ? 'rotate-90' : '']" viewBox="0 0 20 20" fill="currentColor">
+              <path fill-rule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clip-rule="evenodd" />
+            </svg>
+            {{ t('recurring.placeholders_toggle') }}
+          </button>
+          <div v-if="placeholdersHelpOpen" class="mt-2 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-600 space-y-2">
+            <p>{{ t('recurring.placeholders_intro') }}</p>
+            <dl class="space-y-1">
+              <div v-for="(row, i) in placeholderRows" :key="i" class="flex gap-2">
+                <dt class="font-mono shrink-0 text-neutral-800 whitespace-nowrap">{{ row.c }}</dt>
+                <dd>{{ row.d }}</dd>
+              </div>
+            </dl>
+            <p class="text-neutral-500">{{ t('recurring.placeholders_example') }}</p>
+          </div>
+        </div>
         <template v-if="supplierIsVatPayer">
           <label class="flex items-center gap-2 text-sm text-neutral-700 mb-1">
             <input v-model="form.prices_include_vat" type="checkbox" class="rounded border-neutral-300 text-primary-600" />

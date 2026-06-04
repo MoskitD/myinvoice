@@ -514,6 +514,17 @@
     "reminder_days_before_hint": "How many days before issuing you get an email reminder to add extra work. 0 = do not send.",
     "items": "Items",
     "items_required": "Template must have at least one item.",
+    "placeholders_toggle": "Period placeholders in item descriptions ({YYYY}, {MM}, {DATE}…)",
+    "placeholders_intro": "Replaced on every invoice generation based on the tax date (issue date for proformas). They also work in the notes above/below items carried over from the template. Unrecognized tokens are left untouched. Examples below for tax date May 15, 2026:",
+    "placeholders_rows": [
+      { "c": "{YYYY}, {YY}", "d": "year → 2026, 26 · shift by years: {YYYY+1} → 2027, {YY-1} → 25" },
+      { "c": "{M}, {MM}", "d": "month → 5, 05 · shift by months incl. year rollover: {MM+8} → 01" },
+      { "c": "{MMMM}", "d": "month name per document language → May · {MMMM+1} → June" },
+      { "c": "{Q}", "d": "quarter → 2 · {Q+1} → 3" },
+      { "c": "{D}, {DD}", "d": "day → 15, 15 · shift by days: {D+14} → 29" },
+      { "c": "{DATE}", "d": "full date → May 15, 2026 · ±D/M/Y arithmetic: {DATE+1Y-1D} → May 14, 2027" }
+    ],
+    "placeholders_example": "Example: \"Renewal of domain example.cz for period {DATE} - {DATE+1Y-1D}\" → \"Renewal of domain example.cz for period May 15, 2026 - May 14, 2027\"",
     "status": {
       "active": "Active",
       "paused": "Paused",

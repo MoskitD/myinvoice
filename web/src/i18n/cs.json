@@ -514,6 +514,17 @@
     "reminder_days_before_hint": "Kolik dní před vystavením vám přijde e-mailová připomínka, ať stihnete doplnit vícepráce. 0 = neposílat.",
     "items": "Položky",
     "items_required": "Šablona musí mít alespoň jednu položku.",
+    "placeholders_toggle": "Placeholdery období v popisech položek ({YYYY}, {MM}, {DATE}…)",
+    "placeholders_intro": "Při každém vygenerování faktury se nahradí podle DUZP (u proformy podle data vystavení). Fungují i v poznámkách nad/pod položkami převzatých ze šablony. Nerozpoznané tokeny zůstávají beze změny. Příklady níže pro DUZP 15. 5. 2026:",
+    "placeholders_rows": [
+      { "c": "{YYYY}, {YY}", "d": "rok → 2026, 26 · posun po letech: {YYYY+1} → 2027, {YY-1} → 25" },
+      { "c": "{M}, {MM}", "d": "měsíc → 5, 05 · posun po měsících vč. přetečení roku: {MM+8} → 01" },
+      { "c": "{MMMM}", "d": "název měsíce dle jazyka dokladu → květen · {MMMM+1} → červen" },
+      { "c": "{Q}", "d": "čtvrtletí → 2 · {Q+1} → 3" },
+      { "c": "{D}, {DD}", "d": "den → 15, 15 · posun po dnech: {D+14} → 29" },
+      { "c": "{DATE}", "d": "celé datum → 15. 5. 2026 · aritmetika ±D/M/Y: {DATE+1Y-1D} → 14. 5. 2027" }
+    ],
+    "placeholders_example": "Příklad: „Prodloužení domény example.cz na období {DATE} - {DATE+1Y-1D}\" → „Prodloužení domény example.cz na období 15. 5. 2026 - 14. 5. 2027\"",
     "status": {
       "active": "Aktivní",
       "paused": "Pozastavená",

@@ -82,6 +82,38 @@ cena/j, sazba DPH). Sazba se bere podle vybraného `vat_rate_id` ze šablony.
 > založené dřív s nominální sazbou — generátor sazbu při vystavení sám sjednotí
 > na 0 %.
 
+**Placeholdery období** *(od v4.14.0)* — do popisu položky (a do poznámek nad/pod
+položkami šablony) lze vložit tokeny, které se při **každém vygenerování** faktury
+nahradí podle **DUZP** (u proformy podle data vystavení). Šablona se nikdy nemění,
+do faktury jde vyhodnocený text. Inline přehled je přímo v editoru šablony
+(rozbalovací nápověda nad položkami). Pro DUZP 15. 5. 2026:
+
+| Token | Výsledek | Poznámka |
+|---|---|---|
+| `{YYYY}`, `{YY}` | 2026, 26 | rok; posun po letech: `{YYYY+1}` → 2027, `{YY-1}` → 25 |
+| `{M}`, `{MM}` | 5, 05 | měsíc; posun po **měsících** vč. přetečení roku: `{MM+8}` → 01 |
+| `{MMMM}` | květen | název měsíce **dle jazyka dokladu** (cs/en); `{MMMM+1}` → červen |
+| `{Q}` | 2 | čtvrtletí 1–4; posun po čtvrtletích: `{Q+1}` → 3 |
+| `{D}`, `{DD}` | 15, 15 | den; posun po dnech: `{D+14}` → 29 |
+| `{DATE}` | 15. 5. 2026 | celé ref. datum, formát dle jazyka dokladu (en: May 15, 2026) |
+| `{DATE+1Y-1D}` | 14. 5. 2027 | datová aritmetika — kombinace `±N` jednotek `D`/`M`/`Y`, zleva doprava |
+
+Typický příklad (prodloužení domény na rok):
+
+```text
+Prodloužení domény example.cz na období {DATE} - {DATE+1Y-1D}
+→ Prodloužení domény example.cz na období 15. 5. 2026 - 14. 5. 2027
+```
+
+Další ukázky: `sezóna {YY}/{YY+1}` → „sezóna 26/27", `servis {Q}Q/{YYYY}` →
+„servis 2Q/2026", `úklid za {MMMM} {YYYY}` → „úklid za květen 2026".
+
+> 💡 Tokeny se píší **velkými písmeny**. Cokoli nerozpoznaného (`{foo}`, `{yyyy}`,
+> obyčejné závorky v textu) zůstává beze změny — existující šablony fungují
+> beze změny a nic není potřeba escapovat. Placeholdery fungují nezávisle na
+> volbě „Synchronizovat měsíc" níže (lze kombinovat; obojí míří na stejné
+> referenční datum).
+
 ### 15.2.4 Sekce „Automatizace"
 
 - **Synchronizovat měsíc v popiscích položek s DUZP** — pokud je v popisu
@@ -92,6 +124,9 @@ cena/j, sazba DPH). Sazba se bere podle vybraného `vat_rate_id` ze šablony.
   spadá do 5/2026, a „Hosting 06/2026" pokud do 6/2026 — bez kumulativního
   driftu. Pattern detektor zvládá `M/YYYY`, `YYYY-MM`, `M.YYYY`, `M-YYYY`
   a varianty; plná data typu `2026-05-15` chrání lookaround a nemění je.
+  Pro nové šablony zvaž **placeholdery období** (viz § 15.2.3) — jsou
+  explicitnější (`{MM}/{YYYY}`) a umí víc (roky, čtvrtletí, celá data);
+  tahle volba zůstává pro stávající šablony s prostým `M/YYYY` v textu.
 - **Po vygenerování rovnou vystavit** — cron rovnou přidělí číslo faktury
   z šablony číslování dodavatele a zafixuje snapshoty klienta/dodavatele/
   bankovního spojení (status = `issued`). Pokud vypneš, vygeneruje se jen
