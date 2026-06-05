@@ -39,15 +39,20 @@ final class StatementImporter
 
         // GPC header (074) NEMÁ pole pro měnu — máme to jen v 075 transakcích
         // (pozice 118-122, ISO 4217 numeric). Odvodíme měnu výpisu v pořadí:
-        //   1) Per transakce má parser currency vyplněnou (CREDITAS, Fio, KB ji
-        //      v 075 plní) → vezmeme dominantní non-null currency.
-        //   2) Fallback: lookup do currencies podle account_number — pokud má
-        //      supplier účet s naším account_number vedený v EUR, použijeme EUR.
-        //   3) Bez 1 ani 2: NULL (UI fallback CZK).
-        // Per bug report: GPC EUR výpis (Creditas, 00978) se zobrazoval jako
-        // CZK protože bank_statements.currency zůstával NULL.
-        $statementCurrency = $this->detectStatementCurrency($parsed['transactions'])
-            ?? $this->lookupAccountCurrency($h['account_number']);
+        //   1) Lookup do currencies podle account_number/IBAN — GPC výpis je vždy
+        //      z JEDNOHO účtu (= jedna měna), takže měna registrovaného účtu je
+        //      AUTORITATIVNÍ. Per-tx pole nelze upřednostnit: Fio ho dle své
+        //      specifikace plní KONSTANTNĚ "0203" (CZK) i u EUR účtu (#109 —
+        //      EUR výpis se pak zobrazil v Kč a kvůli currency guardu v matcheru
+        //      se nikdy nespároval).
+        //   2) Fallback (účet neregistrovaný): dominantní non-null currency
+        //      z 075 transakcí (CREDITAS/KB plní reálný kód; původní Creditas
+        //      bug report — EUR výpis s 00978 se zobrazoval jako CZK, protože
+        //      bank_statements.currency zůstával NULL).
+        //   3) Bez 1 i 2: NULL (UI fallback CZK).
+        $accountCurrency = $this->lookupAccountCurrency($h['account_number']);
+        $statementCurrency = $accountCurrency
+            ?? $this->detectStatementCurrency($parsed['transactions']);
 
         $pdo->prepare(
             'INSERT INTO bank_statements
@@ -72,10 +77,12 @@ final class StatementImporter
 
         $matched = 0;
         foreach ($parsed['transactions'] as $tx) {
-            // Per-tx currency má prioritu (multi-currency výpisy by stejně tak
-            // měly v 075 mít odlišný kód) — fallback na statement currency, aby
-            // se EUR transakce z banky, která 075.currency nevyplňuje, neztratila.
-            $txCurrency = $tx['currency'] ?? $statementCurrency;
+            // Měna registrovaného účtu přebíjí i per-tx pole (#109): výpis je
+            // jednoměnový a Fio do 075 píše konstantně CZK i u EUR účtu — per-tx
+            // hodnota by rozbila currency guard v matcheru. Per-tx kód se použije
+            // jen jako fallback, když účet není registrovaný (CREDITAS/KB ho
+            // plní reálně) — aby se EUR transakce neztratila.
+            $txCurrency = $accountCurrency ?? $tx['currency'] ?? $statementCurrency;
             $insertTx->execute([
                 $statementId, $tx['posted_at'], $tx['amount'], $txCurrency,
                 $tx['variable_symbol'], $tx['constant_symbol'], $tx['specific_symbol'],
