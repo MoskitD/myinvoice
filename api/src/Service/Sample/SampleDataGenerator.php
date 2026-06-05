@@ -46,10 +46,13 @@ final class SampleDataGenerator
         $czkId = $resolveCurrency('CZK');
         $eurId = $resolveCurrency('EUR');
 
+        // RC flag (index 8) daňově smysluplně: tuzemští klienti BEZ reverse charge
+        // (tuzemský RC §92a na IT služby neexistuje), EU klienti s DIČ (SK, DE)
+        // S reverse charge — poskytnutí služby do JČS (ř.21 DPHDP3, kód 22, SHV).
         $clients = [
-            ['ACME Czech s.r.o.',     '12345678', 'CZ12345678', 'Václavské náměstí 1',  '11000', 'Praha 1',  'CZ', 'invoice@acme.cz',     1, 'cs', $czkId, 'CZK'],
-            ['BlueWave Digital a.s.', '87654321', 'CZ87654321', 'Husova 23',            '60200', 'Brno',     'CZ', 'finance@bluewave.cz', 1, 'cs', $czkId, 'CZK'],
-            ['Bratislava Soft s.r.o.','46782931', 'SK2023456789','Mlynská 5',            '81101', 'Bratislava','SK', 'fakturace@bsoft.sk',  0, 'cs', $eurId, 'EUR'],
+            ['ACME Czech s.r.o.',     '12345678', 'CZ12345678', 'Václavské náměstí 1',  '11000', 'Praha 1',  'CZ', 'invoice@acme.cz',     0, 'cs', $czkId, 'CZK'],
+            ['BlueWave Digital a.s.', '87654321', 'CZ87654321', 'Husova 23',            '60200', 'Brno',     'CZ', 'finance@bluewave.cz', 0, 'cs', $czkId, 'CZK'],
+            ['Bratislava Soft s.r.o.','46782931', 'SK2023456789','Mlynská 5',            '81101', 'Bratislava','SK', 'fakturace@bsoft.sk',  1, 'cs', $eurId, 'EUR'],
             ['Studio Fialka',         null,       null,         'Nádražní 7',           '70030', 'Ostrava',  'CZ', 'jana@fialka.cz',      0, 'cs', $czkId, 'CZK'],
             ['NorthLight GmbH',       null,       'DE123456789','Hauptstrasse 12',      '10115', 'Berlin',   'DE', 'billing@northlight.de', 1, 'en', $eurId, 'EUR'],
         ];
@@ -95,6 +98,7 @@ final class SampleDataGenerator
         $prevMonth = $today->modify('-1 month')->format('Y-m');
 
         $stdVat = (int) $pdo->query("SELECT id FROM vat_rates WHERE code = 'CZ-21' LIMIT 1")->fetchColumn();
+        $lowVat = (int) $pdo->query("SELECT id FROM vat_rates WHERE code = 'CZ-12' LIMIT 1")->fetchColumn();
         $rcVat  = (int) $pdo->query("SELECT id FROM vat_rates WHERE code = 'CZ-RC' LIMIT 1")->fetchColumn();
 
         $invoices = [];
@@ -136,9 +140,9 @@ final class SampleDataGenerator
                 'INSERT INTO invoices
                     (supplier_id, varsymbol, invoice_type, client_id, project_id, issue_date, tax_date, due_date,
                      currency_id, exchange_rate, exchange_rate_date,
-                     reverse_charge, language, total_without_vat, total_vat, total_with_vat,
+                     reverse_charge, language, vat_classification_code, total_without_vat, total_vat, total_with_vat,
                      status, sent_at, paid_at, created_by)
-                 VALUES (?, ?, "invoice", ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?, ?, ?)'
+                 VALUES (?, ?, "invoice", ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?, ?, ?)'
             );
             $sentAt = in_array($status, ['sent', 'paid'], true) ? $issueDate . ' 14:00:00' : null;
             $paidAt = $status === 'paid'
@@ -148,7 +152,11 @@ final class SampleDataGenerator
                 $supplierId, $vs, $clientIds[$clientIdx], $projectId, $issueDate, $taxDate, $dueDate,
                 $clientCurrencyId, $exchangeRate, $exchangeRate !== null ? $issueDate : null,
                 $clientReverseCharge ? 1 : 0,
-                $clients[$clientIdx][9], $status, $sentAt, $paidAt, $adminUserId,
+                $clients[$clientIdx][9],
+                // EU RC = poskytnutí služby do JČS → kód 22 (ř.21 DPHDP3 + SHV);
+                // tuzemské nechávat bez kódu (fallback dle sazby → ř.1, KH A.4/A.5).
+                $clientReverseCharge ? '22' : null,
+                $status, $sentAt, $paidAt, $adminUserId,
             ]);
             $invId = (int) $pdo->lastInsertId();
             $invoices[] = ['id' => $invId, 'vs' => $vs, 'currency' => $clientCurrency, 'currency_id' => $clientCurrencyId, 'rc' => $clientReverseCharge];
@@ -159,7 +167,7 @@ final class SampleDataGenerator
                 $hours = random_int(2, 40);
                 $rate = $clientCurrency === 'EUR' ? random_int(60, 100) : random_int(1200, 2000);
                 $base = $hours * $rate;
-                $vatAmt = $clientReverseCharge ? 0 : round($base * 0.21, 2);
+                $vatAmt = round($base * $vatPct / 100, 2); // RC má vatPct 0 → daň 0
                 $totalBase += $base;
                 $totalVat  += $vatAmt;
 
@@ -207,9 +215,9 @@ final class SampleDataGenerator
                 'INSERT INTO invoices
                     (supplier_id, varsymbol, invoice_type, parent_invoice_id, client_id, project_id,
                      issue_date, tax_date, due_date, currency_id, exchange_rate, exchange_rate_date,
-                     reverse_charge, language,
+                     reverse_charge, language, vat_classification_code,
                      total_without_vat, total_vat, total_with_vat, status, sent_at, created_by)
-                 VALUES (?, ?, "credit_note", ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "sent", ?, ?)'
+                 VALUES (?, ?, "credit_note", ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "sent", ?, ?)'
             );
             $stmt->execute([
                 $supplierId, $vs, $p['id'], $p['client_id'], $p['project_id'],
@@ -218,6 +226,7 @@ final class SampleDataGenerator
                 $p['exchange_rate'] ?? null,
                 $p['exchange_rate'] !== null ? $issueDate : null,
                 $p['reverse_charge'], $p['language'],
+                $p['vat_classification_code'] ?? null, // dobropis dědí klasifikaci originálu
                 -$p['total_without_vat'], -$p['total_vat'], -$p['total_with_vat'],
                 $issueDate . ' 12:00:00', $adminUserId,
             ]);
@@ -239,11 +248,36 @@ final class SampleDataGenerator
         }
 
         // ───── Dodavatelé (is_vendor=1, is_customer=0) ─────
+        // Daňově smysluplné profily: US dodavatelé služeb = reverse charge
+        // (samovyměření, kód 24 → ř.12 + mirror odpočet ř.43, jako reálný
+        // GitHub/Anthropic doklad), tuzemští = česká DPH (kód 40/41, KH B.2/B.3).
         $vendors = [
             ['Anthropic, PBC',          null,        null,         '548 Market St #79290',  '94104', 'San Francisco', 'US', 'billing@anthropic.com', $eurId, 'EUR'],
             ['Microsoft Czech s.r.o.',  '47123737',  'CZ47123737', 'Vyskočilova 1561/4a',   '14000', 'Praha 4',       'CZ', 'fakturace@microsoft.cz', $czkId, 'CZK'],
             ['GitHub, Inc.',            null,        null,         '88 Colin P Kelly Jr St', '94107', 'San Francisco', 'US', 'billing@github.com',    $eurId, 'EUR'],
             ['Office Pro s.r.o.',       '28765432',  'CZ28765432', 'Korunní 810/104',        '10100', 'Praha 10',     'CZ', 'fakturace@officepro.cz', $czkId, 'CZK'],
+        ];
+        // Per-vendor: RC flag + pool položek [popis, sazba %, klasifikační kód].
+        // RC položky nesou nominální sazbu 21 s daní 0 (samovyměření dopočítají
+        // až DPH výkazy z rate snapshotu — stejný model jako AI import / editor).
+        $vendorItemPools = [
+            'Anthropic, PBC' => ['rc' => true, 'items' => [
+                ['Claude API kredity', 21, '24'],
+                ['Claude Max — měsíční předplatné', 21, '24'],
+            ]],
+            'GitHub, Inc.' => ['rc' => true, 'items' => [
+                ['GitHub Copilot — předplatné', 21, '24'],
+                ['GitHub Team — roční plán', 21, '24'],
+            ]],
+            'Microsoft Czech s.r.o.' => ['rc' => false, 'items' => [
+                ['Microsoft 365 Business Premium — licence', 21, '40'],
+                ['Azure — cloud služby', 21, '40'],
+            ]],
+            'Office Pro s.r.o.' => ['rc' => false, 'items' => [
+                ['Kancelářské potřeby', 21, '40'],
+                ['Odborná literatura', 12, '41'],
+                ['Papír a tonery do tiskárny', 21, '40'],
+            ]],
         ];
         $vendorIds = [];
         $vendorMeta = [];
@@ -299,44 +333,49 @@ final class SampleDataGenerator
             ], JSON_UNESCAPED_UNICODE);
 
             $exchangeRate = $v['currency'] === 'CZK' ? null : 25.0;
+            $pool = $vendorItemPools[$v['company']];
+            $isRc = $pool['rc'];
 
             $stmt = $pdo->prepare(
                 'INSERT INTO purchase_invoices
                     (supplier_id, vendor_id, varsymbol, vendor_invoice_number, document_kind,
                      issue_date, tax_date, due_date, received_at, currency_id, exchange_rate, exchange_rate_date,
-                     exchange_rate_source, reverse_charge, language, vendor_snapshot,
+                     exchange_rate_source, reverse_charge, language, vendor_snapshot, vat_classification_code,
                      total_without_vat, total_vat, total_with_vat, status, booked_at, paid_at, created_by)
-                 VALUES (?, ?, ?, ?, "invoice", ?, ?, ?, ?, ?, ?, ?, "cnb", 0, "cs", ?, 0, 0, 0, ?, ?, ?, ?)'
+                 VALUES (?, ?, ?, ?, "invoice", ?, ?, ?, ?, ?, ?, ?, "cnb", ?, "cs", ?, ?, 0, 0, 0, ?, ?, ?, ?)'
             );
             $stmt->execute([
                 $supplierId, $v['id'], $vs, $vendorInvoiceNumber,
                 $issueDate, $taxDate, $dueDate, $receivedAt,
                 $v['currency_id'], $exchangeRate, $exchangeRate !== null ? $issueDate : null,
-                $vendorSnapshot, $status, $bookedAt, $paidAt, $adminUserId,
+                $isRc ? 1 : 0,
+                $vendorSnapshot,
+                $isRc ? '24' : null, // dovoz služby (ř.12 + mirror ř.43); tuzemsko per položka
+                $status, $bookedAt, $paidAt, $adminUserId,
             ]);
             $piId = (int) $pdo->lastInsertId();
 
-            // 1-3 položky
-            $itemCount = random_int(1, 3);
+            // 1-3 položky z vendor poolu (popis + sazba + klasifikace k sobě patří)
+            $itemCount = random_int(1, min(3, count($pool['items'])));
             $totalBase = 0; $totalVat = 0;
             for ($k = 0; $k < $itemCount; $k++) {
+                [$description, $ratePct, $clsCode] = $pool['items'][($i + $k) % count($pool['items'])];
                 $qty  = random_int(1, 5);
                 $rate = $v['currency'] === 'CZK' ? random_int(500, 5000) : random_int(20, 200);
                 $base = $qty * $rate;
-                $vatAmt = round($base * 0.21, 2);
+                // RC: nominální sazba zůstává, daň 0 (samovyměří se až ve výkazech)
+                $vatAmt = $isRc ? 0.0 : round($base * $ratePct / 100, 2);
                 $totalBase += $base; $totalVat += $vatAmt;
-                $description = match ($k) {
-                    0 => 'API kredity / cloud služby',
-                    1 => 'Software licence',
-                    default => 'Konzultace / podpora',
-                };
                 $pdo->prepare(
                     'INSERT INTO purchase_invoice_items
                         (purchase_invoice_id, description, quantity, unit, unit_price_without_vat,
-                         vat_rate_id, vat_rate_snapshot, total_without_vat, total_vat, total_with_vat, order_index)
-                     VALUES (?,?,?,"ks",?,?,21.00,?,?,?,?)'
+                         vat_rate_id, vat_rate_snapshot, total_without_vat, total_vat, total_with_vat,
+                         vat_classification_code, order_index)
+                     VALUES (?,?,?,"ks",?,?,?,?,?,?,?,?)'
                 )->execute([
-                    $piId, $description, $qty, $rate, $stdVat, $base, $vatAmt, $base + $vatAmt, $k,
+                    $piId, $description, $qty, $rate,
+                    $ratePct >= 21 ? $stdVat : $lowVat, $ratePct,
+                    $base, $vatAmt, $base + $vatAmt, $clsCode, $k,
                 ]);
             }
             $totalWithVat = $totalBase + $totalVat;

@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Kniha DPH: sloupec KH ukazuje efektivní sekci kontrolního hlášení.** A.4/A.5 a B.2/B.3 nejsou vlastnost klasifikačního kódu, ale dokladu — rozhoduje celková hodnota dokladu vč. DPH (limit 10 000 Kč) a DIČ protistrany. Kniha dosud tiskla statickou hodnotu z číselníku (kód 40 → „B.2" u všech přijatých), nově počítá sekci per doklad stejnou logikou jako generátor KH: drobný doklad pod limit ukáže B.3 (sumace), doklad bez DIČ protistrany jde do sumace i nad limit — shodně se sestavou POHODA.
 
+### Fixed
+
+- **Sample data jsou daňově smysluplná.** Generátor testovacích dat dosud vyráběl daňové nesmysly: US dodavatelům (Anthropic, GitHub) účtoval českou 21% DPH bez reverse charge, tuzemským klientům nasazoval RC a EU klientovi s DIČ českou DPH; doklady neměly žádnou DPH klasifikaci. Nově: US dodavatelé služeb = reverse charge + kód 24 (dovoz služby — ř.12 + zrcadlový odpočet ř.43, v Knize DPH pár „43 ř.012/43 ř.043"), tuzemští dodavatelé kód 40/41 s mixem sazeb 21/12 % (v KH vznikají B.2 i B.3), EU klienti (SK/DE) reverse charge + kód 22 (služby do JČS, ř.21 + SHV), tuzemští klienti běžná DPH (A.4/A.5). Dobropisy dědí klasifikaci originálu. Sample tak pokrývá všechny hlavní scénáře DPH výkazů.
+
 ### Changed
 
 - **Kniha DPH řadí jako POHODA.** Sekce vzestupně dle čísla členění (15 přijatá → 36 uskutečněná → 43 RC/dovozové páry → 47 majetek; dříve vystavené napřed) a doklady uvnitř sekce dle interního čísla dokladu (natural sort; dříve dle data plnění) — výstup tak jde porovnat se sestavou účetní řádek po řádku. RC/dovozový pár (samovyměření + mirror odpočet ř. 43) je nově celý pod členěním 43 — primary řádek (např. dovoz služby ř. 12) se už neukazuje mezi přijatými 15.xxx na začátku, ale hned před svým zrcadlovým odpočtem za sekcí 36, přesně jako POHODA („43 ř.012" + „43 ř.043").
