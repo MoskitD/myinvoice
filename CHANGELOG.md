@@ -5,6 +5,12 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **Kniha DPH řadí jako POHODA.** Sekce vzestupně dle čísla členění (15 přijatá → 36 uskutečněná → 43 mirror → 47 majetek; dříve vystavené napřed) a doklady uvnitř sekce dle interního čísla dokladu (natural sort; dříve dle data plnění) — výstup tak jde porovnat se sestavou účetní řádek po řádku.
+
 ## [4.17.0] — 2026-06-05
 
 Hlavní novinka: **identifikovaná osoba** ([#94](https://github.com/radekhulan/myinvoice/issues/94), díky @mikolashodan za podnět) — plný režim § 6g–6l ZDPH pro neplátce s přeshraničními povinnostmi. Dále per-supplier kopie odchozích e-mailů (CC/BCC), refaktoring parserů avíz ([#118](https://github.com/radekhulan/myinvoice/pull/118), díky [@blondak](https://github.com/blondak)) a zpřístupnění měsíčního exportu rolím accountant/readonly.

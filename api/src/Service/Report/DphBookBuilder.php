@@ -111,7 +111,9 @@ final class DphBookBuilder
         // Convert sections asociativní mapy → indexované pole, seřazené.
         $sectionList = array_values($sections);
         usort($sectionList, function ($a, $b) {
-            // Vystavené (36) nahoru, pak přijaté (15), pak secondary (43).
+            // Vzestupně dle čísla členění (15 přijatá → 36 uskutečněná → 43 mirror
+            // → 47 majetek) — stejně řadí POHODA (reference DPH_LIST_KH 42026.pdf),
+            // ať Kniha DPH sedí vedle výstupu účetní bez přeskakování.
             $oa = $this->sectionOrder($a['key']);
             $ob = $this->sectionOrder($b['key']);
             if ($oa !== $ob) return $oa <=> $ob;
@@ -127,6 +129,24 @@ final class DphBookBuilder
         $issued   = ['base' => 0.0, 'vat' => 0.0, 'total' => 0.0];
         $received = ['base' => 0.0, 'vat' => 0.0, 'total' => 0.0];
         foreach ($sectionList as &$s) {
+            // Řádky uvnitř sekce dle interního čísla dokladu (natural sort) —
+            // stejně řadí POHODA (PF 31 před PF 33 i při pozdějším datu plnění);
+            // doklady bez čísla (drafty) nakonec, fallback datum plnění + id.
+            usort($s['rows'], static function (array $a, array $b): int {
+                $da = (string) ($a['doc_number'] ?? '');
+                $db = (string) ($b['doc_number'] ?? '');
+                if ($da !== '' && $db !== '') {
+                    $c = strnatcasecmp($da, $db);
+                    if ($c !== 0) return $c;
+                } elseif ($da === '' || $db === '') {
+                    if (($da === '') !== ($db === '')) {
+                        return $da === '' ? 1 : -1;
+                    }
+                }
+                return [(string) ($a['tax_date'] ?? ''), (int) $a['invoice_id']]
+                    <=> [(string) ($b['tax_date'] ?? ''), (int) $b['invoice_id']];
+            });
+
             $sb = $sv = $st = 0.0;
             foreach ($s['rows'] as $row) {
                 $sb += (float) $row['base'];
@@ -138,8 +158,9 @@ final class DphBookBuilder
             $s['subtotal_total'] = $st;
             // Do souhrnů započítáváme jen non-secondary řádky aby se dovoz služby
             // nezdvojoval. (Sekce 43/47 jsou secondary mirror sekce 12/40-45.)
+            // Bucket dle prefixu klíče (NE dle sectionOrder — ten je jen pořadí zobrazení).
             if (empty($s['is_secondary'])) {
-                $bucket = $this->sectionOrder($s['key']) === 0 ? 'issued' : 'received';
+                $bucket = str_starts_with($s['key'], '36.') ? 'issued' : 'received';
                 ${$bucket}['base']  += $sb;
                 ${$bucket}['vat']   += $sv;
                 ${$bucket}['total'] += $st;
@@ -303,12 +324,12 @@ final class DphBookBuilder
 
     private function sectionOrder(string $key): int
     {
-        // 36.XXX = vystavené (0), 15.XXX = přijaté (1), 43.XXX = RC/dovoz mirror (2),
-        // 47.XXX = hodnota pořízeného majetku doplňující údaj (3).
+        // Vzestupně dle čísla členění jako POHODA: 15.XXX přijaté (0),
+        // 36.XXX vystavené (1), 43.XXX RC/dovoz mirror (2), 47.XXX majetek (3).
         $prefix = substr($key, 0, 2);
         return match ($prefix) {
-            '36' => 0,
-            '15' => 1,
+            '15' => 0,
+            '36' => 1,
             '43' => 2,
             '47' => 3,
             default => 9,
