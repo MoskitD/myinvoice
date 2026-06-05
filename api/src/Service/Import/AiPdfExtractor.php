@@ -44,6 +44,7 @@ final class AiPdfExtractor
         private readonly Config $config,
         private readonly \MyInvoice\Service\Currency\CnbExchangeRateClient $cnb,
         private readonly ImageToPdfConverter $imageToPdf,
+        private readonly \MyInvoice\Repository\TaxConstantsRepository $taxConstants,
         ?LoggerInterface $logger = null,
     ) {
         $this->logger = $logger ?? new NullLogger();
@@ -462,7 +463,11 @@ final class AiPdfExtractor
             $rcClassification = $country['is_eu']
                 ? ($isGoods ? '23' : '24')
                 : ($isGoods ? '25' : '24');
-            $rcRateId = $this->matchVatRateId($vatRates, 21.0);
+            // Základní sazba pro rok dokladu z číselníku daňových konstant (ne natvrdo 21).
+            $rcDate = (string) ($data['tax_date'] ?? $data['issue_date'] ?? '');
+            $rcYear = $rcDate !== '' ? (int) substr($rcDate, 0, 4) : (int) date('Y');
+            $rcRate = $this->taxConstants->vatRateStandard($rcYear);
+            $rcRateId = $this->matchVatRateId($vatRates, $rcRate);
             foreach ($items as &$it) {
                 if ($rcRateId !== null) {
                     $it['vat_rate_id'] = $rcRateId;
@@ -489,7 +494,7 @@ final class AiPdfExtractor
                 '25' => 'dovoz zboží ze 3. země',
             ];
             $rcWarning = 'Reverse charge (' . $rcLabels[$rcClassification] . '): položkám byla'
-                . ' nastavena tuzemská sazba DPH 21 % a klasifikace ' . $rcClassification
+                . sprintf(' nastavena tuzemská sazba DPH %g %% a klasifikace ', $rcRate) . $rcClassification
                 . ' — daň se samovyměří až v DPH výkazech, částka k úhradě zůstává bez DPH.'
                 . $duzpNote
                 . ' Zkontrolujte povahu plnění (zboží = kód 23/25, služba = kód 24).';

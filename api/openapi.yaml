@@ -3953,6 +3953,9 @@ components:
         - pension_cap
         - vat_limit_low
         - vat_limit_high
+        - vat_rate_standard
+        - vat_rate_reduced
+        - kh_item_threshold
         - pausal_annual
         - band_ceilings
         - expense_caps
@@ -3974,6 +3977,9 @@ components:
         pension_cap: { type: number }
         vat_limit_low: { type: number, description: Limit obratu pro povinnou registraci DPH }
         vat_limit_high: { type: number }
+        vat_rate_standard: { type: number, description: Základní sazba DPH (%) — sloupce DPH výkazů, samovyměření RC, auto-klasifikace }
+        vat_rate_reduced: { type: number, description: Snížená sazba DPH (%) }
+        kh_item_threshold: { type: number, description: Limit KH (Kč vč. DPH) — nad limit doklad jednotlivě (A.4/B.2), do limitu sumace (A.5/B.3) }
         pausal_annual:
           type: object
           description: Měsíční/roční částky paušální daně per pásmo

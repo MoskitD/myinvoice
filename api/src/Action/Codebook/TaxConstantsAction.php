@@ -86,6 +86,7 @@ final class TaxConstantsAction
             'social_rate', 'health_rate', 'social_assessment_pct', 'health_assessment_pct',
             'social_min_base_main', 'social_min_base_secondary', 'health_min_base',
             'mortgage_cap', 'pension_cap', 'vat_limit_low', 'vat_limit_high',
+            'vat_rate_standard', 'vat_rate_reduced', 'kh_item_threshold',
         ];
         foreach ($scalars as $k) {
             if (!isset($d[$k]) || !is_numeric($d[$k])) {

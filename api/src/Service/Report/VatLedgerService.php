@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MyInvoice\Service\Report;
 
 use MyInvoice\Infrastructure\Database\Connection;
+use MyInvoice\Repository\TaxConstantsRepository;
 
 /**
  * Kanonický producent VAT řádků — JEDNO místo se sdílenou logikou pro všechny
@@ -46,7 +47,10 @@ use MyInvoice\Infrastructure\Database\Connection;
  */
 final class VatLedgerService
 {
-    public function __construct(private readonly Connection $db) {}
+    public function __construct(
+        private readonly Connection $db,
+        private readonly TaxConstantsRepository $taxConstants,
+    ) {}
 
     /**
      * @return list<array<string,mixed>> kanonické řádky (sale i purchase) za období
@@ -100,6 +104,9 @@ final class VatLedgerService
     private function fetchSales(int $supplierId, string $start, string $end, bool $includeDrafts): array
     {
         $statusFilter = $includeDrafts ? "i.status != 'cancelled'" : "i.status NOT IN ('draft', 'cancelled')";
+        // Práh základní/snížená sazba pro fallback klasifikaci — per rok období
+        // (číselník daňových konstant, ne natvrdo 20.5).
+        $bucket = $this->taxConstants->vatBucketThreshold((int) substr($start, 0, 4));
         $stmt = $this->db->pdo()->prepare("
             SELECT i.id AS invoice_id, i.varsymbol AS doc_number, i.varsymbol AS vendor_invoice_number,
                    i.invoice_type AS document_kind, i.status,
@@ -117,7 +124,7 @@ final class VatLedgerService
                                 AND COALESCE(co.is_eu, 0) = 1 AND COALESCE(co.iso2, 'CZ') <> 'CZ' THEN '20'
                            -- Tuzemský odběratel + RC = přenesená daň. povinnost §92 → ř.25 (pln_rez_pren), KH A.1.
                            WHEN i.reverse_charge = 1 THEN '25s'
-                           WHEN ii.vat_rate_snapshot >= 20.5 THEN '1'
+                           WHEN ii.vat_rate_snapshot >= ?    THEN '1'
                            WHEN ii.vat_rate_snapshot > 0     THEN '2'
                            WHEN ii.vat_rate_snapshot = 0     THEN '3'
                            ELSE NULL
@@ -138,7 +145,7 @@ final class VatLedgerService
                AND COALESCE(i.tax_date, i.issue_date) BETWEEN ? AND ?
           ORDER BY COALESCE(i.tax_date, i.issue_date), i.id, ii.id
         ");
-        $stmt->execute([$supplierId, $start, $end]);
+        $stmt->execute([$bucket, $supplierId, $start, $end]);
         return $stmt->fetchAll(\PDO::FETCH_ASSOC);
     }
 
@@ -157,6 +164,8 @@ final class VatLedgerService
     private function fetchPurchases(int $supplierId, string $start, string $end, bool $includeDrafts): array
     {
         $statusFilter = $includeDrafts ? "pi.status != 'cancelled'" : "pi.status NOT IN ('draft', 'cancelled')";
+        // Práh základní/snížená sazba pro fallback klasifikaci — per rok období.
+        $bucket = $this->taxConstants->vatBucketThreshold((int) substr($start, 0, 4));
         $stmt = $this->db->pdo()->prepare("
             SELECT pi.id AS invoice_id, pi.varsymbol AS doc_number, pi.vendor_invoice_number,
                    pi.document_kind, pi.status,
@@ -171,7 +180,7 @@ final class VatLedgerService
                        pii.vat_classification_code, pi.vat_classification_code,
                        CASE
                            WHEN pi.reverse_charge = 1 THEN '5'
-                           WHEN pii.vat_rate_snapshot >= 20.5 THEN '40'
+                           WHEN pii.vat_rate_snapshot >= ?    THEN '40'
                            WHEN pii.vat_rate_snapshot > 0     THEN '41'
                            ELSE NULL
                        END
@@ -242,7 +251,7 @@ final class VatLedgerService
                        ELSE pi.issue_date
                    END, pi.id, pii.id
         ");
-        $stmt->execute([$supplierId, $start, $end]);
+        $stmt->execute([$bucket, $supplierId, $start, $end]);
         return $stmt->fetchAll(\PDO::FETCH_ASSOC);
     }
 

@@ -846,6 +846,50 @@ final class KhDphTaxScenariosTest extends TestCase
         self::assertSame('17.18', (string) $kh2->DPHKH1->VetaB3['dan1'], 'KH B.3 daň = 17,18 (koeficient)');
     }
 
+    /**
+     * Override daňových konstant (tabulka tax_constants) reálně řídí výkazy a
+     * bere se per ROK OBDOBÍ výkazu: limit KH snížený na 5 000 Kč pro rok 2097
+     * pošle doklad 9 680 Kč vč. DPH do B.2 (jednotlivě), zatímco s defaultem
+     * 10 000 by spadl do sumace B.3. Ostatní testy (rok 2099, bez override)
+     * pinují defaultní chování — dohromady ověřeno, že konstanty nejsou globální
+     * "aktuální", ale per rok období.
+     */
+    public function testTaxConstantsOverrideDrivesKhThresholdPerYear(): void
+    {
+        $pdo = $this->db->pdo();
+        $data = \MyInvoice\Service\Tax\TaxConstants::forYear(2097);
+        $data['kh_item_threshold'] = 5000;
+        $pdo->prepare('INSERT INTO tax_constants (year, data) VALUES (?, ?)
+                       ON DUPLICATE KEY UPDATE data = VALUES(data)')
+            ->execute([2097, json_encode($data)]);
+        try {
+            $vend = $this->client('Dodavatel override KH', $this->czId, 'CZ44444446', vendor: true);
+            // 9 680 Kč vč. DPH — pod zákonným limitem 10 000, ale NAD overridnutým 5 000
+            $this->purchase('P-2097-001', $vend, '40', false, 'invoice', '2097-04-10', '2097-04-10', [[8000, 1680, 21]]);
+            // 3 630 Kč — pod oběma limity → sumace B.3
+            $this->purchase('P-2097-002', $vend, '40', false, 'invoice', '2097-04-11', '2097-04-11', [[3000, 630, 21]]);
+
+            // KH XML: doklad nad overridnutý limit jde do B.2 jednotlivě
+            $kh = new \SimpleXMLElement($this->kh->build($this->supplierId, 2097, 4)['xml']);
+            $b2 = [];
+            foreach ($kh->DPHKH1->VetaB2 as $v) $b2[] = (string) $v['zakl_dane1'];
+            $this->assertSame(['8000.00'], $b2, 'override limitu 5000: doklad 9680 vč. DPH → B.2 jednotlivě');
+            $this->assertSame('3000.00', (string) $kh->DPHKH1->VetaB3['zakl_dane1'], 'menší doklad zůstává v sumaci B.3');
+
+            // Kniha DPH ukazuje efektivní sekce dle TÉHOŽ override (sdílená logika)
+            $book = $this->book->build($this->supplierId, 2097, 4);
+            $khCol = [];
+            foreach ($book['sections'] as $s) {
+                foreach ($s['rows'] as $r) $khCol[$r['original_doc_number']] = $r['kh_section'];
+            }
+            $this->assertSame('B.2', $khCol['P-2097-001'], 'Kniha DPH: sloupec KH respektuje override limitu');
+            $this->assertSame('B.3', $khCol['P-2097-002']);
+        } finally {
+            // tax_constants je GLOBÁLNÍ tabulka (žádný tenant scope) → uklidit vždy
+            $pdo->prepare('DELETE FROM tax_constants WHERE year = 2097')->execute();
+        }
+    }
+
     // ── helpers ──────────────────────────────────────────────────────────────
 
     private function countryId(string $iso2): int

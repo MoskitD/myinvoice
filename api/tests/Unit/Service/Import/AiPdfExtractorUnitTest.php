@@ -59,6 +59,7 @@ final class AiPdfExtractorUnitTest extends TestCase
             $this->createMock(Config::class),
             $this->createMock(CnbExchangeRateClient::class),
             new ImageToPdfConverter(), // bez závislostí — reálná instance stačí
+            $this->createMock(\MyInvoice\Repository\TaxConstantsRepository::class),
             new NullLogger(),
         );
     }

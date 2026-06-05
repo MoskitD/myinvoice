@@ -6,6 +6,7 @@ namespace MyInvoice\Service\Export;
 
 use MyInvoice\Infrastructure\Database\Connection;
 use MyInvoice\Repository\InvoiceRepository;
+use MyInvoice\Repository\TaxConstantsRepository;
 
 /**
  * Stormware Pohoda XML data package exporter.
@@ -45,7 +46,21 @@ final class PohodaXmlExporter
     public function __construct(
         private readonly InvoiceRepository $repo,
         private readonly Connection $db,
+        private readonly TaxConstantsRepository $taxConstants,
     ) {}
+
+    /**
+     * Hranice základní sazby (bucket high vs low) pro rok dokladu — z číselníku
+     * daňových konstant místo natvrdo 20,5. Hranice low/low2 (11,5 / 9,5) zůstávají
+     * fixní: jsou to středy historických snížených sazeb (12/10 %), které Pohoda
+     * kategorie low/low2 přímo kopírují.
+     */
+    private function highBoundary(array $invoice): float
+    {
+        $date = (string) ($invoice['tax_date'] ?? $invoice['issue_date'] ?? '');
+        $year = $date !== '' ? (int) substr($date, 0, 4) : (int) date('Y');
+        return $this->taxConstants->vatBucketThreshold($year);
+    }
 
     /**
      * @param int[] $invoiceIds
@@ -213,7 +228,7 @@ final class PohodaXmlExporter
                 // Sazba DPH
                 $rate = (float) ($item['vat_rate_snapshot'] ?? 0);
                 $rateCode = match (true) {
-                    $rate >= 20.5 => 'high',
+                    $rate >= $this->highBoundary($invoice) => 'high',
                     $rate >= 11.5 => 'low',
                     $rate >= 9.5  => 'low2',  // 10% (Pohoda historic)
                     default       => 'none',
@@ -256,8 +271,8 @@ final class PohodaXmlExporter
             // (uživatel by měl doplnit kurz; export jinak nemá CZK účetní hodnoty).
             $homeCurrency = $dom->createElementNS(self::NS_INV, 'inv:homeCurrency');
             $homeBuckets  = $isForeign && !empty($invoice['czk_recap'])
-                ? $this->bucketsFromCzkRecap($invoice['czk_recap'])
-                : $this->bucketsFromBreakdown($bd);
+                ? $this->bucketsFromCzkRecap($invoice['czk_recap'], $this->highBoundary($invoice))
+                : $this->bucketsFromBreakdown($bd, $this->highBoundary($invoice));
             $homeTotal = $isForeign && !empty($invoice['czk_recap'])
                 ? (float) $invoice['czk_recap']['total_with_vat_czk']
                 : (float) ($totals['with_vat'] ?? 0);
@@ -288,7 +303,7 @@ final class PohodaXmlExporter
                 $this->el($dom, $foreign, self::NS_TYP, 'typ:rate', number_format($exchangeRate, 6, '.', ''));
                 $this->el($dom, $foreign, self::NS_TYP, 'typ:amount', '1');
 
-                $fb = $this->bucketsFromBreakdown($bd);
+                $fb = $this->bucketsFromBreakdown($bd, $this->highBoundary($invoice));
                 $this->el($dom, $foreign, self::NS_TYP, 'typ:priceNone',    $this->fmt($fb['none']));
                 $this->el($dom, $foreign, self::NS_TYP, 'typ:priceLow',     $this->fmt($fb['low']));
                 $this->el($dom, $foreign, self::NS_TYP, 'typ:priceLowVAT',  $this->fmt($fb['lowVat']));
@@ -331,7 +346,7 @@ final class PohodaXmlExporter
         foreach ($bd as $b) {
             if ((float) $b['rate'] > $maxRate) $maxRate = (float) $b['rate'];
         }
-        if ($maxRate >= 20.5) return 'UDA5';
+        if ($maxRate >= $this->highBoundary($invoice)) return 'UDA5';
         if ($maxRate >= 11.5) return 'UDA5_12';
         return 'UNX';
     }
@@ -382,12 +397,12 @@ final class PohodaXmlExporter
      * @param list<array{rate: float, base: float, vat: float}> $breakdown
      * @return array{none: float, low: float, lowVat: float, high: float, highVat: float}
      */
-    private function bucketsFromBreakdown(array $breakdown): array
+    private function bucketsFromBreakdown(array $breakdown, float $highBoundary): array
     {
         $out = ['none' => 0.0, 'low' => 0.0, 'lowVat' => 0.0, 'high' => 0.0, 'highVat' => 0.0];
         foreach ($breakdown as $b) {
             $r = (float) $b['rate'];
-            if ($r >= 20.5) {
+            if ($r >= $highBoundary) {
                 $out['high']    += (float) $b['base'];
                 $out['highVat'] += (float) $b['vat'];
             } elseif ($r >= 11.5) {
@@ -404,12 +419,12 @@ final class PohodaXmlExporter
      * @param array{breakdown: list<array{rate: float, base_czk: float, vat_czk: float}>} $recap
      * @return array{none: float, low: float, lowVat: float, high: float, highVat: float}
      */
-    private function bucketsFromCzkRecap(array $recap): array
+    private function bucketsFromCzkRecap(array $recap, float $highBoundary): array
     {
         $out = ['none' => 0.0, 'low' => 0.0, 'lowVat' => 0.0, 'high' => 0.0, 'highVat' => 0.0];
         foreach ($recap['breakdown'] ?? [] as $b) {
             $r = (float) $b['rate'];
-            if ($r >= 20.5) {
+            if ($r >= $highBoundary) {
                 $out['high']    += (float) $b['base_czk'];
                 $out['highVat'] += (float) $b['vat_czk'];
             } elseif ($r >= 11.5) {

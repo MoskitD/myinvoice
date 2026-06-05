@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MyInvoice\Tests\Unit\Service\Report;
 
 use MyInvoice\Infrastructure\Database\Connection;
+use MyInvoice\Repository\TaxConstantsRepository;
 use MyInvoice\Service\Report\VatClassificationMapper;
 use MyInvoice\Service\Report\VatLedgerService;
 use PDO;
@@ -43,7 +44,7 @@ final class VatClassificationMapperTest extends TestCase
         $prop = $ref->getProperty('pdo');
         $prop->setValue($conn, $this->pdo);
 
-        $this->mapper = new VatClassificationMapper($conn, new VatLedgerService($conn));
+        $this->mapper = new VatClassificationMapper($conn, new VatLedgerService($conn, new TaxConstantsRepository($conn)));
     }
 
     public function testEuAcquisitionInEurAppliesExchangeRate(): void
@@ -176,6 +177,9 @@ final class VatClassificationMapperTest extends TestCase
 
         // VatLedgerService JOINuje clients + countries (kvůli protistraně/zemi pro KH).
         $this->pdo->exec("CREATE TABLE countries (id INTEGER PRIMARY KEY, iso2 TEXT NOT NULL, is_eu INTEGER NOT NULL DEFAULT 0)");
+
+        // Daňové konstanty — prázdná tabulka = žádný override → defaulty z TaxConstants
+        $this->pdo->exec("CREATE TABLE tax_constants (year INTEGER PRIMARY KEY, data TEXT NOT NULL)");
         $this->pdo->exec("INSERT INTO countries (id, iso2, is_eu) VALUES (1, 'CZ', 1), (4, 'DE', 1)");
         $this->pdo->exec("CREATE TABLE clients (
             id INTEGER PRIMARY KEY, company_name TEXT NOT NULL DEFAULT '',

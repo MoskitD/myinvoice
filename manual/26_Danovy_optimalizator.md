@@ -61,3 +61,16 @@ Sazby, limity a vyměřovací základy jsou v aplikaci jako **ověřené výchoz
 hodnoty**; admin je může pro daný rok upravit bez nového nasazení v
 `Nastavení → Číselníky → Daňové konstanty` (sazby se mění každý rok). „Reset na
 výchozí" vrátí hodnoty z aplikace.
+
+První (zvýrazněná) skupina **DPH a výkazy** se na rozdíl od ostatních netýká
+jen daně z příjmů OSVČ — platí pro **všechny plátce DPH**:
+
+| Konstanta | K čemu slouží |
+| --- | --- |
+| Základní / snížená sazba DPH | rozřazení částek do sloupců DPH výkazů (přiznání, KH, Kniha DPH), Pohoda export, auto-klasifikace importovaných dokladů a samovyměření u reverse charge |
+| Limit KH | hranice (Kč vč. DPH), od které jde doklad do kontrolního hlášení jednotlivě (A.4/B.2) místo sumace (A.5/B.3) |
+| Limity registrace DPH | hlídání obratu pro povinnou registraci plátce |
+
+Výkazy vždy používají konstanty **roku vykazovaného období** — když se limit
+nebo sazba změní, zpětně generovaný výkaz za starší období počítá s tehdejšími
+hodnotami.

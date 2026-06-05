@@ -1148,6 +1148,27 @@ watch(tab, (newTab) => {
       <p class="text-xs text-neutral-500 mb-4 max-w-3xl">{{ t('codebooks.tax_hint') }}</p>
 
       <div v-if="taxModel" class="grid lg:grid-cols-2 gap-4">
+        <!-- DPH a výkazy — platí pro VŠECHNY plátce (nejen OSVČ), proto zvýrazněně nahoře -->
+        <div class="bg-primary-50/40 border border-primary-300 rounded-lg p-4 shadow-sm lg:col-span-2">
+          <div class="flex flex-wrap items-center gap-2 mb-1">
+            <h3 class="text-xs font-semibold uppercase tracking-wide text-primary-700">{{ t('codebooks.tax_g_vat_general') }}</h3>
+            <span class="text-[11px] px-2 py-0.5 rounded-full bg-primary-600 text-white font-medium">{{ t('codebooks.tax_g_vat_general_badge') }}</span>
+          </div>
+          <p class="text-xs text-neutral-500 mb-3 max-w-3xl">{{ t('codebooks.tax_g_vat_general_hint') }}</p>
+          <div class="grid sm:grid-cols-2 lg:grid-cols-5 gap-3">
+            <label class="block"><span class="text-xs text-neutral-500">{{ t('codebooks.tax_f_vat_rate_standard') }}</span>
+              <input v-model.number="taxModel.vat_rate_standard" type="number" step="0.1" class="mt-0.5 h-8 w-full px-2 border border-neutral-300 rounded text-sm font-mono" /></label>
+            <label class="block"><span class="text-xs text-neutral-500">{{ t('codebooks.tax_f_vat_rate_reduced') }}</span>
+              <input v-model.number="taxModel.vat_rate_reduced" type="number" step="0.1" class="mt-0.5 h-8 w-full px-2 border border-neutral-300 rounded text-sm font-mono" /></label>
+            <label class="block"><span class="text-xs text-neutral-500">{{ t('codebooks.tax_f_kh_threshold') }}</span>
+              <input v-model.number="taxModel.kh_item_threshold" type="number" class="mt-0.5 h-8 w-full px-2 border border-neutral-300 rounded text-sm font-mono" /></label>
+            <label class="block"><span class="text-xs text-neutral-500">{{ t('codebooks.tax_f_vat_low') }}</span>
+              <input v-model.number="taxModel.vat_limit_low" type="number" class="mt-0.5 h-8 w-full px-2 border border-neutral-300 rounded text-sm font-mono" /></label>
+            <label class="block"><span class="text-xs text-neutral-500">{{ t('codebooks.tax_f_vat_high') }}</span>
+              <input v-model.number="taxModel.vat_limit_high" type="number" class="mt-0.5 h-8 w-full px-2 border border-neutral-300 rounded text-sm font-mono" /></label>
+          </div>
+        </div>
+
         <!-- Paušální daň -->
         <div class="bg-surface border border-neutral-200 rounded-lg p-4 shadow-sm">
           <h3 class="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-3">{{ t('codebooks.tax_g_pausal') }}</h3>
@@ -1215,7 +1236,7 @@ watch(tab, (newTab) => {
           </div>
         </div>
 
-        <!-- Odpočty + DPH -->
+        <!-- Odpočty (DPH konstanty jsou ve zvýrazněném boxu nahoře) -->
         <div class="bg-surface border border-neutral-200 rounded-lg p-4 shadow-sm">
           <h3 class="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-3">{{ t('codebooks.tax_g_deductions_vat') }}</h3>
           <div class="grid grid-cols-2 gap-3">
@@ -1223,10 +1244,6 @@ watch(tab, (newTab) => {
               <input v-model.number="taxModel.mortgage_cap" type="number" class="mt-0.5 h-8 w-full px-2 border border-neutral-300 rounded text-sm font-mono" /></label>
             <label class="block"><span class="text-xs text-neutral-500">{{ t('codebooks.tax_f_pension_cap') }}</span>
               <input v-model.number="taxModel.pension_cap" type="number" class="mt-0.5 h-8 w-full px-2 border border-neutral-300 rounded text-sm font-mono" /></label>
-            <label class="block"><span class="text-xs text-neutral-500">{{ t('codebooks.tax_f_vat_low') }}</span>
-              <input v-model.number="taxModel.vat_limit_low" type="number" class="mt-0.5 h-8 w-full px-2 border border-neutral-300 rounded text-sm font-mono" /></label>
-            <label class="block"><span class="text-xs text-neutral-500">{{ t('codebooks.tax_f_vat_high') }}</span>
-              <input v-model.number="taxModel.vat_limit_high" type="number" class="mt-0.5 h-8 w-full px-2 border border-neutral-300 rounded text-sm font-mono" /></label>
           </div>
         </div>
 

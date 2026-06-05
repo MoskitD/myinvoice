@@ -70,9 +70,12 @@ final class TaxConstants
             // Odpočty — stropy
             'mortgage_cap' => 150000,
             'pension_cap'  => 48000,
-            // DPH
+            // DPH — platí pro VŠECHNY plátce (nejen OSVČ)
             'vat_limit_low'  => 2000000,
             'vat_limit_high' => 2536500,
+            'vat_rate_standard' => 21.0,  // základní sazba § 47 ZDPH
+            'vat_rate_reduced'  => 12.0,  // snížená sazba (od 2024 jednotná 12 %)
+            'kh_item_threshold' => 10000, // limit KH: nad → A.4/B.2 jednotlivě, do → A.5/B.3 sumace
         ],
         2026 => [
             'year' => 2026,
@@ -101,6 +104,9 @@ final class TaxConstants
             'pension_cap'  => 48000,
             'vat_limit_low'  => 2000000,
             'vat_limit_high' => 2536500,
+            'vat_rate_standard' => 21.0,
+            'vat_rate_reduced'  => 12.0,
+            'kh_item_threshold' => 10000,
         ],
     ];
 }

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MyInvoice\Service\Report;
 
 use MyInvoice\Infrastructure\Database\Connection;
+use MyInvoice\Repository\TaxConstantsRepository;
 
 /**
  * Builder XML pro Kontrolní hlášení (DPHKH1) — EPO portál MFČR.
@@ -28,13 +29,12 @@ use MyInvoice\Infrastructure\Database\Connection;
  */
 final class KontrolniHlaseniBuilder
 {
-    /** Limit pro A.4 vs A.5 (a B.2 vs B.3) — nad 10 000 Kč jdou jednotlivě, do sumace.
-     *  Public: stejný práh používá DphBookBuilder pro efektivní KH sekci ve sloupci Knihy DPH. */
-    public const ITEM_VS_BULK_THRESHOLD = 10000.0;
-
     public function __construct(
         private readonly Connection $db,
         private readonly VatLedgerService $ledger,
+        // Limit A.4/A.5 a B.2/B.3 (10 000 Kč) + práh základní/snížená sazba — per
+        // rok období z číselníku daňových konstant (admin override), ne natvrdo.
+        private readonly TaxConstantsRepository $taxConstants,
     ) {}
 
     /**
@@ -274,6 +274,12 @@ final class KontrolniHlaseniBuilder
      */
     private function collectSections(int $supplierId, string $start, string $end): array
     {
+        // Konstanty pro rok OBDOBÍ výkazu (ne aktuální) — zpětně generované KH za
+        // staré období musí použít tehdejší limit/sazby.
+        $periodYear = (int) substr($start, 0, 4);
+        $itemThreshold = $this->taxConstants->khItemThreshold($periodYear);
+        $bucket = $this->taxConstants->vatBucketThreshold($periodYear);
+
         // Agregace kanonických řádků per (zdroj, faktura).
         $inv = [];
         foreach ($this->ledger->rows($supplierId, $start, $end, includeDrafts: false) as $r) {
@@ -306,12 +312,12 @@ final class KontrolniHlaseniBuilder
             // Vystavené (sale) do A.4/A.5 přispívají vždy.
             $khEligible = $r['source'] === 'sale' || $r['dphdp3_line'] !== null;
             if ($khEligible) {
-                if ($r['vat_rate'] >= 20.5) { $g['base21'] += $base; $g['vat21'] += $vat; }
-                elseif ($r['vat_rate'] > 0) { $g['base12'] += $base; $g['vat12'] += $vat; }
+                if ($r['vat_rate'] >= $bucket) { $g['base21'] += $base; $g['vat21'] += $vat; }
+                elseif ($r['vat_rate'] > 0)    { $g['base12'] += $base; $g['vat12'] += $vat; }
             }
             if ($r['kh_section'] === 'A.2') {
-                if ($r['vat_rate'] >= 20.5) { $g['a2_base21'] += $base; $g['a2_vat21'] += $vat; }
-                elseif ($r['vat_rate'] > 0) { $g['a2_base12'] += $base; $g['a2_vat12'] += $vat; }
+                if ($r['vat_rate'] >= $bucket) { $g['a2_base21'] += $base; $g['a2_vat21'] += $vat; }
+                elseif ($r['vat_rate'] > 0)    { $g['a2_base12'] += $base; $g['a2_vat12'] += $vat; }
             }
             unset($g);
         }
@@ -323,7 +329,7 @@ final class KontrolniHlaseniBuilder
 
         foreach ($inv as $g) {
             $hasDic = $g['dic'] !== '';
-            $overLimit = abs($g['total_czk']) >= self::ITEM_VS_BULK_THRESHOLD;
+            $overLimit = abs($g['total_czk']) >= $itemThreshold;
 
             if ($g['source'] === 'sale') {
                 if ($g['is_rc']) {

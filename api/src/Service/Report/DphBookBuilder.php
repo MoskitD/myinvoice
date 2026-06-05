@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MyInvoice\Service\Report;
 
 use MyInvoice\Infrastructure\Database\Connection;
+use MyInvoice\Repository\TaxConstantsRepository;
 
 /**
  * Builder pro **Knihu DPH** (interní VAT žurnál).
@@ -39,6 +40,7 @@ final class DphBookBuilder
     public function __construct(
         private readonly Connection $db,
         private readonly VatLedgerService $ledger,
+        private readonly TaxConstantsRepository $taxConstants,
     ) {}
 
     /**
@@ -59,6 +61,10 @@ final class DphBookBuilder
         $start = sprintf('%04d-%02d-01', $year, $month);
         $end = (new \DateTimeImmutable($start))->modify('last day of this month')->format('Y-m-d');
 
+        // Konstanty pro rok období (číselník daňových konstant, admin override).
+        $khItemThreshold = $this->taxConstants->khItemThreshold($year);
+        $vatBucket = $this->taxConstants->vatBucketThreshold($year);
+
         // Kanonické řádky ze sdílené VatLedgerService (vč. draftů — Kniha je pracovní
         // žurnál). Seskupíme per (doklad, kód, sazba) do jednoho řádku přehledu a
         // zařadíme do sekcí dle dphdp3_line (+ mirror 43, + ř.47 majetek).
@@ -73,7 +79,7 @@ final class DphBookBuilder
                 if (($g['code'] ?? '') !== '') {
                     continue;
                 }
-                $line = $g['vat_rate'] >= 20.5
+                $line = $g['vat_rate'] >= $vatBucket
                     ? ($g['source'] === 'sale' ? '1' : '40')
                     : ($g['vat_rate'] > 0 ? ($g['source'] === 'sale' ? '2' : '41') : null);
             }
@@ -82,7 +88,7 @@ final class DphBookBuilder
                 'label'                 => $g['label'] !== '' ? $g['label'] : '(bez klasifikace)',
                 'dphdp3_line'           => $line,
                 'dphdp3_line_secondary' => $g['dphdp3_line_secondary'],
-                'kh_section'            => $this->effectiveKhSection($g),
+                'kh_section'            => $this->effectiveKhSection($g, $khItemThreshold),
                 'vat_rate'              => $g['vat_rate'],
             ];
             $row = $this->toBookRow($g);
@@ -348,15 +354,16 @@ final class DphBookBuilder
      * Ostatní sekce (A.1, A.2, B.1, NULL) se nepřepočítávají.
      *
      * @param array<string,mixed> $g kanonický (seskupený) řádek ledgeru
+     * @param float $itemThreshold limit KH pro rok období (číselník daňových konstant)
      */
-    private function effectiveKhSection(array $g): ?string
+    private function effectiveKhSection(array $g, float $itemThreshold): ?string
     {
         $kh = $g['kh_section'] ?? null;
         if (!in_array($kh, ['A.4', 'A.5', 'B.2', 'B.3'], true)) {
             return $kh;
         }
         $itemized = KontrolniHlaseniBuilder::cleanDic($g['counterparty_dic'] ?? null) !== ''
-            && abs((float) $g['total_with_vat_czk']) >= KontrolniHlaseniBuilder::ITEM_VS_BULK_THRESHOLD;
+            && abs((float) $g['total_with_vat_czk']) >= $itemThreshold;
         return str_starts_with($kh, 'A.')
             ? ($itemized ? 'A.4' : 'A.5')
             : ($itemized ? 'B.2' : 'B.3');

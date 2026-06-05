@@ -26,7 +26,10 @@ use PDO;
  */
 final class PurchaseInvoiceRepository
 {
-    public function __construct(private readonly Connection $db) {}
+    public function __construct(
+        private readonly Connection $db,
+        private readonly TaxConstantsRepository $taxConstants,
+    ) {}
 
     /**
      * Najde fakturu jen pokud patří danému tenantovi.
@@ -602,16 +605,21 @@ final class PurchaseInvoiceRepository
         //   EU vendor s 0% → '24' (přijetí služby z EU) — typický pro Anthropic, GitHub apod.
         //   non-EU vendor s 0% → '25' (dovoz ze 3. země)
         $metaStmt = $pdo->prepare(
-            'SELECT pi.reverse_charge, co.iso2
+            'SELECT pi.reverse_charge, co.iso2,
+                    COALESCE(pi.tax_date, pi.issue_date) AS doc_date
                FROM purchase_invoices pi
                JOIN clients c     ON c.id  = pi.vendor_id
                JOIN countries co  ON co.id = c.country_id
               WHERE pi.id = ?'
         );
         $metaStmt->execute([$purchaseInvoiceId]);
-        $meta = $metaStmt->fetch(PDO::FETCH_ASSOC) ?: ['reverse_charge' => 0, 'iso2' => 'CZ'];
+        $meta = $metaStmt->fetch(PDO::FETCH_ASSOC) ?: ['reverse_charge' => 0, 'iso2' => 'CZ', 'doc_date' => null];
         $reverseCharge = (bool) $meta['reverse_charge'];
         $countryIso = (string) ($meta['iso2'] ?? 'CZ');
+        // Základní sazba pro rok dokladu (číselník daňových konstant) — určuje, kdy
+        // sazba znamená "tuzemská základní" v auto-klasifikaci.
+        $docYear = !empty($meta['doc_date']) ? (int) substr((string) $meta['doc_date'], 0, 4) : (int) date('Y');
+        $standardRate = $this->taxConstants->vatRateStandard($docYear);
 
         foreach (array_values($items) as $i => $item) {
             $vatRateId = (int) ($item['vat_rate_id'] ?? 0);
@@ -621,7 +629,7 @@ final class PurchaseInvoiceRepository
             // faktura NEDORAZILA do výkazů (VatClassificationMapper SKIPNE code=NULL).
             $code = $item['vat_classification_code'] ?? null;
             if ($code === null) {
-                $code = self::defaultClassificationCode($rate, $reverseCharge, $countryIso);
+                $code = self::defaultClassificationCode($rate, $reverseCharge, $countryIso, $standardRate);
             }
             $stmt->execute([
                 $purchaseInvoiceId,
@@ -663,8 +671,12 @@ final class PurchaseInvoiceRepository
         float $rate,
         bool $reverseCharge,
         ?string $vendorCountryIso2 = null,
+        // Základní sazba pro rok dokladu (číselník daňových konstant). Default 21
+        // drží zpětnou kompatibilitu pro volání bez kontextu (CLI backfill).
+        float $standardRate = 21.0,
     ): ?string {
         $r = (int) round($rate);
+        $std = (int) round($standardRate);
         $iso = strtoupper((string) ($vendorCountryIso2 ?? 'CZ'));
         $euCountries = [
             'AT','BE','BG','HR','CY','DK','EE','FI','FR','DE','GR','HU','IE','IT',
@@ -680,11 +692,13 @@ final class PurchaseInvoiceRepository
         // EU vendor + RC + 21 % → pořízení zboží z JČS (kód 23, ř. 3 + ř. 43 mirror + KH A.2).
         // Vzácnější použití (vendor obvykle fakturuje bez DPH), ale když má 21 % sazbu
         // (typicky reverse-charge invoice s vyčíslenou daní pro info), tohle je správně.
-        if ($isEu && $reverseCharge && $r >= 21) return '23';
+        if ($isEu && $reverseCharge && $r >= $std) return '23';
         // CZ tuzemsko (nebo zahraniční vendor s CZ DPH, vzácné)
-        if ($reverseCharge && $r >= 21) return '5';
-        if ($r >= 21)                   return '40';
-        if ($r >= 5 && $r <= 15)        return '41';
+        if ($reverseCharge && $r >= $std) return '5';
+        if ($r >= $std)                   return '40';
+        // Snížené sazby 5–15 % (12 aktuální, 10/15 historické). Pásmo 16 až <std
+        // záměrně nemapujeme (např. německá 19 % není česká DPH → user vybere ručně).
+        if ($r >= 5 && $r <= 15)          return '41';
         return null;
     }
 

@@ -7,7 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
+### Added
+
+- **DPH konstanty v číselníku daňových konstant — už ne natvrdo v kódu.** Limit kontrolního hlášení 10 000 Kč (A.4/B.2 vs sumace A.5/B.3), základní a snížená sazba DPH jsou nově roční konstanty v `Nastavení → Číselníky → Daňové konstanty` — ve zvýrazněné skupině **„DPH a výkazy"** na začátku, protože na rozdíl od ostatních (DPFO/OSVČ) platí pro všechny plátce. Z nich se odvozuje: limit KH (generátor KH i sloupec KH v Knize DPH), práh rozřazení sazeb do sloupců výkazů (dřív 8× natvrdo `20.5` — DPH přiznání, KH, Kniha DPH, Pohoda export), sazba samovyměření u RC importů (AI extraktor) a auto-klasifikace přijatých dokladů. Výkazy berou konstanty **roku vykazovaného období**, takže budoucí změna limitu/sazby nerozbije zpětně generované výkazy; starší uložené overridy se automaticky doplní o nové klíče z defaultů. Manuál § 26.
 
 - **Kniha DPH: sloupec KH ukazuje efektivní sekci kontrolního hlášení.** A.4/A.5 a B.2/B.3 nejsou vlastnost klasifikačního kódu, ale dokladu — rozhoduje celková hodnota dokladu vč. DPH (limit 10 000 Kč) a DIČ protistrany. Kniha dosud tiskla statickou hodnotu z číselníku (kód 40 → „B.2" u všech přijatých), nově počítá sekci per doklad stejnou logikou jako generátor KH: drobný doklad pod limit ukáže B.3 (sumace), doklad bez DIČ protistrany jde do sumace i nad limit — shodně se sestavou POHODA.
 

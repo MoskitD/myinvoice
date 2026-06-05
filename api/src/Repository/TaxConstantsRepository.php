@@ -19,12 +19,40 @@ final class TaxConstantsRepository
     public function __construct(private readonly Connection $db) {}
 
     /**
-     * Efektivní konstanty pro rok: DB override má přednost, jinak default z kódu.
+     * Efektivní konstanty pro rok: DB override má přednost per klíč, chybějící
+     * klíče doplní default z kódu (override uložený starší verzí aplikace nezná
+     * později přidané konstanty — bez merge by je "ztratil").
      * @return array<string,mixed>
      */
     public function forYear(int $year): array
     {
-        return $this->override($year) ?? TaxConstants::forYear($year);
+        $default = TaxConstants::forYear($year);
+        $override = $this->override($year);
+        return $override !== null ? array_replace($default, $override) : $default;
+    }
+
+    /** Limit KH pro rozdělení A.4/A.5 a B.2/B.3 (nad → jednotlivě, do → sumace). */
+    public function khItemThreshold(int $year): float
+    {
+        return (float) $this->forYear($year)['kh_item_threshold'];
+    }
+
+    /** Základní sazba DPH (§ 47 ZDPH) pro rok — např. pro samovyměření RC. */
+    public function vatRateStandard(int $year): float
+    {
+        return (float) $this->forYear($year)['vat_rate_standard'];
+    }
+
+    /**
+     * Práh pro bucket "základní vs snížená sazba" (EPO formuláře mají právě dva
+     * sloupce zakl_dane1/zakl_dane2) = střed mezi sazbami daného roku. Pro 21/12 %
+     * je to 16,5 — řadí korektně i historickou sníženou 15 % (< 16,5 → snížená),
+     * a na rozdíl od dřívějšího natvrdo 20,5 přežije změnu základní sazby.
+     */
+    public function vatBucketThreshold(int $year): float
+    {
+        $c = $this->forYear($year);
+        return ((float) $c['vat_rate_standard'] + (float) $c['vat_rate_reduced']) / 2.0;
     }
 
     /**
@@ -63,7 +91,11 @@ final class TaxConstantsRepository
             $out[] = [
                 'year'        => $year,
                 'is_override' => $override !== null,
-                'data'        => $override ?? TaxConstants::forYear($year),
+                // Merge jako forYear() — starý override nesmí v editoru "ztratit"
+                // později přidané konstanty.
+                'data'        => $override !== null
+                    ? array_replace(TaxConstants::forYear($year), $override)
+                    : TaxConstants::forYear($year),
             ];
         }
         return $out;
