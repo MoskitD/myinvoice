@@ -128,6 +128,24 @@
     "support_dev": "Podpořte rozvoj",
     "quick_new": "Vytvořit", "quick_invoice": "Vydaná faktura", "quick_proforma": "Zálohová faktura", "quick_recurring": "Pravidelná fakturace", "quick_client": "Klient", "quick_vendor": "Dodavatel", "quick_purchase": "Přijatá faktura"
   },
+  "support": {
+    "author_link": "Podpořte autora",
+    "author_title": "Podpora autora",
+    "author_intro": "Líbí se vám tento projekt? Pokud chcete podpořit autora, můžete poslat dar na číslo účtu:",
+    "account": "Účet",
+    "bank_name": "Partners Banka",
+    "iban": "IBAN",
+    "bic": "BIC / SWIFT",
+    "qr_hint": "Nebo načtěte QR kód:",
+    "feature_link": "Chcete jinou funkci?",
+    "feature_title": "Chcete jinou funkci?",
+    "feature_intro": "MyInvoice vyvíjí Radek Hulan ve studiu MyWebdesign.cz s.r.o. — programujeme už 20 let, dnes 3× rychleji s AI.",
+    "feature_text": "Děláme seniorní vývoj e-shopů, B2B portálů a aplikací na míru pro firmy s obraty v miliardách Kč (Prazdroj, ZOOT, Syntex a další). Žádné šablony, žádný vendor lock-in, žádný technický dluh.",
+    "feature_text2": "Potřebujete do MyInvoice vlastní funkci, report nebo napojení na váš systém? Napište nám — připravíme nabídku s fixní cenou a fixním termínem.",
+    "feature_highlights": "20 let na trhu · Senior tým, žádní junioři · Fixní cena a termín",
+    "feature_cta": "Odeslat poptávku",
+    "close": "Zavřít"
+  },
   "profile_signing": {
     "title": "Elektronické podpisy",
     "subtitle": "Správa vlastních podpisových profilů a certifikátů.",

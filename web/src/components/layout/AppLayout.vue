@@ -23,6 +23,8 @@ const supplierStore = useSupplierStore()
 
 const mobileOpen = ref(false)
 const quickOpen = ref(false)
+const supportOpen = ref(false)
+const featureOpen = ref(false)
 const accountantSigningProfilesEnabled = ref(false)
 let signingSettingsRequest = 0
 
@@ -633,8 +635,72 @@ onMounted(async () => {
             <span>GitHub</span>
           </a>
           <span aria-hidden="true">·</span>
-          <a href="https://github.com/radekhulan/myinvoice#podpora-autora" target="_blank" rel="noopener"
-             class="hover:text-neutral-700">{{ t('nav.support_dev') }}</a>
+          <button type="button" @click="supportOpen = true"
+                  class="cursor-pointer hover:text-neutral-700">{{ t('support.author_link') }}</button>
+          <span aria-hidden="true">·</span>
+          <button type="button" @click="featureOpen = true"
+                  class="cursor-pointer hover:text-neutral-700">{{ t('support.feature_link') }}</button>
+        </footer>
+      </div>
+    </div>
+
+    <!-- ── MODÁL: Podpora autora ── -->
+    <div v-if="supportOpen" class="fixed inset-0 bg-black/40 z-50 flex items-start justify-center p-4 overflow-y-auto"
+         @click.self="supportOpen = false">
+      <div class="bg-surface rounded-xl shadow-lg max-w-md w-full my-8">
+        <header class="px-5 py-4 border-b border-neutral-200 flex items-baseline justify-between gap-3">
+          <h3 class="text-lg font-semibold">{{ t('support.author_title') }}</h3>
+          <button @click="supportOpen = false" class="cursor-pointer text-neutral-400 hover:text-neutral-700 text-2xl leading-none">&times;</button>
+        </header>
+        <div class="p-5 space-y-4 text-sm text-neutral-700">
+          <p>{{ t('support.author_intro') }}</p>
+          <dl class="space-y-1.5">
+            <div class="flex flex-wrap gap-x-2">
+              <dt class="text-neutral-500 w-28 shrink-0">{{ t('support.account') }}</dt>
+              <dd class="font-medium">7700000038 / 6363 <span class="text-neutral-400 font-normal">({{ t('support.bank_name') }})</span></dd>
+            </div>
+            <div class="flex flex-wrap gap-x-2">
+              <dt class="text-neutral-500 w-28 shrink-0">{{ t('support.iban') }}</dt>
+              <dd class="font-medium">CZ21 6363 0000 0077 0000 0038</dd>
+            </div>
+            <div class="flex flex-wrap gap-x-2">
+              <dt class="text-neutral-500 w-28 shrink-0">{{ t('support.bic') }}</dt>
+              <dd class="font-medium">PTBNCZPP</dd>
+            </div>
+          </dl>
+          <div>
+            <p class="mb-2">{{ t('support.qr_hint') }}</p>
+            <img src="/manual/donate/qrcode.jpg" :alt="t('support.author_title')"
+                 class="w-full h-auto rounded-md border border-neutral-200"
+                 style="filter: brightness(1.08);" />
+          </div>
+        </div>
+        <footer class="px-5 py-4 border-t border-neutral-200 flex justify-end">
+          <button @click="supportOpen = false"
+                  class="cursor-pointer px-4 h-9 text-sm border border-neutral-300 rounded-md text-neutral-700 hover:bg-surface">{{ t('support.close') }}</button>
+        </footer>
+      </div>
+    </div>
+
+    <!-- ── MODÁL: Chcete jinou funkci? ── -->
+    <div v-if="featureOpen" class="fixed inset-0 bg-black/40 z-50 flex items-start justify-center p-4 overflow-y-auto"
+         @click.self="featureOpen = false">
+      <div class="bg-surface rounded-xl shadow-lg max-w-md w-full my-8">
+        <header class="px-5 py-4 border-b border-neutral-200 flex items-baseline justify-between gap-3">
+          <h3 class="text-lg font-semibold">{{ t('support.feature_title') }}</h3>
+          <button @click="featureOpen = false" class="cursor-pointer text-neutral-400 hover:text-neutral-700 text-2xl leading-none">&times;</button>
+        </header>
+        <div class="p-5 space-y-3 text-sm text-neutral-700">
+          <p>{{ t('support.feature_intro') }}</p>
+          <p>{{ t('support.feature_text') }}</p>
+          <p class="rounded-md bg-primary-50 border border-primary-500/30 text-primary-800 font-medium px-3 py-2.5">{{ t('support.feature_text2') }}</p>
+          <p class="text-xs text-neutral-500 border-t border-neutral-200 pt-3">{{ t('support.feature_highlights') }}</p>
+        </div>
+        <footer class="px-5 py-4 border-t border-neutral-200 flex justify-end gap-2">
+          <button @click="featureOpen = false"
+                  class="cursor-pointer px-4 h-9 text-sm border border-neutral-300 rounded-md text-neutral-700 hover:bg-surface">{{ t('support.close') }}</button>
+          <a href="https://mywebdesign.cz/#kontakt" target="_blank" rel="noopener" @click="featureOpen = false"
+             class="cursor-pointer px-4 h-9 inline-flex items-center text-sm rounded-md bg-primary-600 hover:bg-primary-700 text-white font-medium">{{ t('support.feature_cta') }}</a>
         </footer>
       </div>
     </div>

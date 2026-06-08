@@ -128,6 +128,24 @@
     "support_dev": "Support development",
     "quick_new": "Create", "quick_invoice": "Issued invoice", "quick_proforma": "Proforma invoice", "quick_recurring": "Recurring invoice", "quick_client": "Client", "quick_vendor": "Vendor", "quick_purchase": "Received invoice"
   },
+  "support": {
+    "author_link": "Support the author",
+    "author_title": "Support the author",
+    "author_intro": "Do you like this project? If you'd like to support the author, you can send a donation to the account:",
+    "account": "Account",
+    "bank_name": "Partners Banka",
+    "iban": "IBAN",
+    "bic": "BIC / SWIFT",
+    "qr_hint": "Or scan the QR code:",
+    "feature_link": "Want another feature?",
+    "feature_title": "Want another feature?",
+    "feature_intro": "MyInvoice is developed by Radek Hulan at MyWebdesign.cz s.r.o. — we've been coding for 20 years, today 3× faster with AI.",
+    "feature_text": "We do senior development of custom e-shops, B2B portals and apps for companies with billion-Kč turnovers (Prazdroj, ZOOT, Syntex and more). No templates, no vendor lock-in, no technical debt.",
+    "feature_text2": "Need a custom feature, report or integration with your system in MyInvoice? Drop us a line — we'll prepare an offer with a fixed price and a fixed deadline.",
+    "feature_highlights": "20 years on the market · Senior team only · Fixed price & deadline",
+    "feature_cta": "Send a request",
+    "close": "Close"
+  },
   "profile_signing": {
     "title": "Electronic signatures",
     "subtitle": "Manage your own signing profiles and certificates.",
