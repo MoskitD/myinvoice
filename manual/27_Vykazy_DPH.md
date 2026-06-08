@@ -6,7 +6,7 @@ MyInvoice.cz generuje XML pro EPO portál MFČR:
 
 Související výkazy a exporty mají v manuálu vlastní kapitoly: [Kniha DPH](28_Kniha_DPH.md)
 (interní žurnál), [Souhrnné hlášení](29_Souhrnne_hlaseni.md) (EU dodání B2B) a
-[Měsíční export](32_Mesicni_export.md) (ZIP balíček pro účetní). Všechny najdeš v menu **Daně**.
+[Hromadný export](32_Hromadny_export.md) (ZIP balíček pro účetní). Všechny najdeš v menu **Daně**.
 
 > [!WARNING]
 > **⚠️ Vygenerovaný XML je pouze pomůcka.** Před odesláním na EPO portál MFČR VŽDY ověř s účetní nebo daňovým poradcem. Aplikace nezaručuje regulatorní správnost — testováno na omezené sadě dat.

@@ -17,9 +17,10 @@ use MyInvoice\Service\Report\DphBookBuilder;
 use ZipArchive;
 
 /**
- * Měsíční export — sbalí existující exporty za měsíc do jednoho ZIPu s pojmenovanými
- * složkami. Běží jako background job (import_jobs, source='monthly_export'), protože
- * renderování PDF u hodně faktur může přesáhnout web timeout.
+ * Hromadný export — sbalí existující exporty za zvolené období (měsíc nebo celé
+ * čtvrtletí) do jednoho ZIPu s pojmenovanými složkami. Běží jako background job
+ * (import_jobs, source='monthly_export'), protože renderování PDF u hodně faktur
+ * může přesáhnout web timeout.
  *
  * Zařazení dokladů do období (shodné s VatLedgerService → Kniha DPH i přiznání DPH):
  *   - vystavené: dle DUZP (daň na výstupu),
@@ -30,6 +31,7 @@ use ZipArchive;
  * Struktura ZIPu:
  *   Vystavene-faktury/PDF|ISDOC/…   Prijate-faktury/PDF|ISDOC/…
  *   Vypisy-z-uctu/PDF|GPC/…         Kniha-DPH/kniha-dph-YYYY-MM.pdf   README.txt
+ *   (kvartálně je Kniha DPH per měsíc — tři PDF.)
  */
 final class MonthlyExportService
 {
@@ -51,6 +53,7 @@ final class MonthlyExportService
         private readonly PurchaseInvoiceExportService $purchaseExport,
         private readonly DphBookBuilder $dphBookBuilder,
         private readonly DphBookPdfRenderer $dphBookRenderer,
+        private readonly ExportPeriodResolver $periodResolver,
     ) {}
 
     /** Absolutní základ úložiště ZIPů (pod data_dir, jinak repo root). */
@@ -73,11 +76,11 @@ final class MonthlyExportService
      *
      * @return array<string,int>
      */
-    public function previewCounts(int $supplierId, string $month): array
+    public function previewCounts(int $supplierId, ExportPeriod $period): array
     {
-        $sales    = count($this->findSalesInvoiceIds($supplierId, $month));
-        $purchase = count($this->findPurchaseInvoices($supplierId, $month));
-        [$bankPdf, $bankGpc] = $this->countStatementFiles($supplierId, $month);
+        $sales    = count($this->findSalesInvoiceIds($supplierId, $period));
+        $purchase = count($this->findPurchaseInvoices($supplierId, $period));
+        [$bankPdf, $bankGpc] = $this->countStatementFiles($supplierId, $period);
         return [
             'sales_pdf'      => $sales,
             'sales_isdoc'    => $sales,
@@ -113,19 +116,22 @@ final class MonthlyExportService
         $supplierId = (int) $job['supplier_id'];
         $userId = (int) ($job['created_by'] ?? 0) ?: null;
         $params = is_array($job['params'] ?? null) ? $job['params'] : [];
-        $year  = (int) ($params['year'] ?? 0);
-        $mon   = (int) ($params['month'] ?? 0);
-        $month = sprintf('%04d-%02d', $year, $mon);
         $parts = self::normalizeParts(array_map('strval', (array) ($params['parts'] ?? [])));
 
+        // Období z params (period/year/month/quarter). Selhání → fail jobu rovnou.
         try {
-            if ($year < 2020 || $mon < 1 || $mon > 12) {
-                throw new \RuntimeException("Neplatné období: {$month}.");
-            }
+            $period = $this->periodResolver->resolve($params);
+        } catch (\InvalidArgumentException $e) {
+            $this->jobs->markFailed($jobId, 'Neplatné období: ' . $e->getMessage());
+            $this->logFinished($jobId, $userId, $supplierId, '?', 'failed', ['error' => $e->getMessage()]);
+            return;
+        }
+        $month = $period->label;  // jen pro logy / názvy souborů (YYYY-MM nebo YYYY-Qn)
 
+        try {
             $companyName = $this->supplierCompanyName($supplierId);
 
-            // Připrav cílovou cestu (sup-N/<jobId>-<firma>-mesicni-export-YYYY-MM.zip).
+            // Připrav cílovou cestu (sup-N/<jobId>-<firma>-hromadny-export-<obdobi>.zip).
             $relDir = 'sup-' . $supplierId;
             $absDir = $this->storageBaseDir() . DIRECTORY_SEPARATOR . $relDir;
             if (!is_dir($absDir) && !@mkdir($absDir, 0775, true) && !is_dir($absDir)) {
@@ -134,8 +140,8 @@ final class MonthlyExportService
             // Název firmy (bez diakritiky) v názvu ZIPu — ať jdou exporty víc dodavatelů rozlišit.
             $companySlug = $this->asciiSlug($companyName);
             $fileName = $companySlug !== ''
-                ? sprintf('%s-mesicni-export-%s.zip', $companySlug, $month)
-                : sprintf('myinvoice-mesicni-export-%s.zip', $month);
+                ? sprintf('%s-hromadny-export-%s.zip', $companySlug, $month)
+                : sprintf('myinvoice-hromadny-export-%s.zip', $month);
             $relPath  = $relDir . '/' . $jobId . '-' . $fileName;
             $absPath  = $this->storageBaseDir() . DIRECTORY_SEPARATOR
                 . str_replace('/', DIRECTORY_SEPARATOR, $relPath);
@@ -146,9 +152,9 @@ final class MonthlyExportService
             }
 
             // Předpočítej zdroje + total pro progress bar.
-            $salesIds   = array_intersect(['sales_pdf', 'sales_isdoc'], $parts) ? $this->findSalesInvoiceIds($supplierId, $month) : [];
-            $purchRows  = array_intersect(['purchase_pdf', 'purchase_isdoc'], $parts) ? $this->findPurchaseInvoices($supplierId, $month) : [];
-            $statements = array_intersect(['bank_pdf', 'bank_gpc'], $parts) ? $this->findStatements($supplierId, $month) : [];
+            $salesIds   = array_intersect(['sales_pdf', 'sales_isdoc'], $parts) ? $this->findSalesInvoiceIds($supplierId, $period) : [];
+            $purchRows  = array_intersect(['purchase_pdf', 'purchase_isdoc'], $parts) ? $this->findPurchaseInvoices($supplierId, $period) : [];
+            $statements = array_intersect(['bank_pdf', 'bank_gpc'], $parts) ? $this->findStatements($supplierId, $period) : [];
 
             $salesParts = count(array_intersect(['sales_pdf', 'sales_isdoc'], $parts));
             $purchParts = count(array_intersect(['purchase_pdf', 'purchase_isdoc'], $parts));
@@ -157,8 +163,9 @@ final class MonthlyExportService
                 if (in_array('bank_pdf', $parts, true) && $this->hasContent($s['pdf_content'] ?? null)) $bankFiles++;
                 if (in_array('bank_gpc', $parts, true) && $this->hasContent($s['file_content'] ?? null)) $bankFiles++;
             }
+            $dphMonths = $this->monthsInPeriod($period);
             $total = count($salesIds) * $salesParts + count($purchRows) * $purchParts + $bankFiles
-                + (in_array('dph_book', $parts, true) ? 1 : 0);
+                + (in_array('dph_book', $parts, true) ? count($dphMonths) : 0);
             $this->jobs->updateProgress($jobId, ['total_items' => $total, 'current_step' => 'Příprava…']);
 
             $added = 0;
@@ -271,24 +278,26 @@ final class MonthlyExportService
                 }
             }
 
-            // 4) Kniha DPH
+            // 4) Kniha DPH — měsíční žurnál; kvartálně tři PDF (per měsíc kvartálu).
             if (in_array('dph_book', $parts, true)) {
-                $this->ensureNotCancelled($jobId, $zip, $absPath);
-                try {
-                    $data = $this->dphBookBuilder->build($supplierId, $year, $mon);
-                    if (!empty($data['sections'])) {
-                        $zip->addFromString(sprintf('Kniha-DPH/kniha-dph-%04d-%02d.pdf', $year, $mon), $this->dphBookRenderer->render($data));
-                        $added++; $summary['dph_book'] = 1;
-                    }
-                } catch (\Throwable $e) { $warnings[] = 'Kniha DPH: ' . $e->getMessage(); }
-                $bump('Kniha DPH');
+                foreach ($dphMonths as [$bookYear, $bookMon]) {
+                    $this->ensureNotCancelled($jobId, $zip, $absPath);
+                    try {
+                        $data = $this->dphBookBuilder->build($supplierId, $bookYear, $bookMon);
+                        if (!empty($data['sections'])) {
+                            $zip->addFromString(sprintf('Kniha-DPH/kniha-dph-%04d-%02d.pdf', $bookYear, $bookMon), $this->dphBookRenderer->render($data));
+                            $added++; $summary['dph_book'] = ($summary['dph_book'] ?? 0) + 1;
+                        }
+                    } catch (\Throwable $e) { $warnings[] = sprintf('Kniha DPH %04d-%02d: %s', $bookYear, $bookMon, $e->getMessage()); }
+                    $bump('Kniha DPH');
+                }
             }
 
             if ($added === 0) {
                 $zip->close();
                 @unlink($absPath);
                 $this->jobs->updateProgress($jobId, ['processed' => $processed, 'failed_count' => count($warnings)]);
-                $this->jobs->markFailed($jobId, "Za měsíc {$month} nejsou pro zvolené části žádná data k exportu.");
+                $this->jobs->markFailed($jobId, "Za období {$month} nejsou pro zvolené části žádná data k exportu.");
                 $this->logFinished($jobId, $userId, $supplierId, $month, 'failed', ['reason' => 'no_data']);
                 return;
             }
@@ -366,22 +375,40 @@ final class MonthlyExportService
         return $row;
     }
 
+    /**
+     * Měsíce spadající do období [from, toExclusive). Měsíčně 1 prvek, kvartálně 3.
+     *
+     * @return list<array{0:int,1:int}> [[year, month], …]
+     */
+    private function monthsInPeriod(ExportPeriod $period): array
+    {
+        $out = [];
+        $cur = new \DateTimeImmutable($period->dateFrom);
+        $end = new \DateTimeImmutable($period->dateToExclusive);
+        while ($cur < $end) {
+            $out[] = [(int) $cur->format('Y'), (int) $cur->format('n')];
+            $cur = $cur->modify('+1 month');
+        }
+        return $out;
+    }
+
     /** @return int[] */
-    private function findSalesInvoiceIds(int $sid, string $month): array
+    private function findSalesInvoiceIds(int $sid, ExportPeriod $period): array
     {
         // Vystavené dle DUZP (daň na výstupu vzniká k DUZP). Shodné s VatLedgerService.
         $sql = "SELECT id FROM invoices
                  WHERE supplier_id = ?
-                   AND DATE_FORMAT(COALESCE(tax_date, issue_date), '%Y-%m') = ?
+                   AND COALESCE(tax_date, issue_date) >= ?
+                   AND COALESCE(tax_date, issue_date) <  ?
                    AND status IN ('issued','sent','reminded','paid')
               ORDER BY COALESCE(tax_date, issue_date), id";
         $stmt = $this->db->pdo()->prepare($sql);
-        $stmt->execute([$sid, $month]);
+        $stmt->execute([$sid, $period->dateFrom, $period->dateToExclusive]);
         return array_map('intval', $stmt->fetchAll(\PDO::FETCH_COLUMN));
     }
 
     /** @return list<array<string,mixed>> */
-    private function findPurchaseInvoices(int $sid, string $month): array
+    private function findPurchaseInvoices(int $sid, ExportPeriod $period): array
     {
         // Přijaté dle pozdějšího z (DUZP, vystavení) — § 73/1/a ZDPH; zahraniční
         // reverse charge dle DUZP (§ 25, § 73/1/b — issue #117). Shodné s VatLedgerService.
@@ -398,20 +425,22 @@ final class MonthlyExportService
                   JOIN clients c ON c.id = pi.vendor_id
              LEFT JOIN countries co ON co.id = c.country_id
                  WHERE pi.supplier_id = ?
-                   AND DATE_FORMAT($dateExpr, '%Y-%m') = ?
+                   AND $dateExpr >= ?
+                   AND $dateExpr <  ?
                    AND pi.status IN ('received', 'booked', 'paid')
                  ORDER BY $dateExpr, pi.id";
         $stmt = $this->db->pdo()->prepare($sql);
-        $stmt->execute([$sid, $month]);
+        $stmt->execute([$sid, $period->dateFrom, $period->dateToExclusive]);
         return $stmt->fetchAll(\PDO::FETCH_ASSOC);
     }
 
-    /** @return list<array<string,mixed>> výpisy za měsíc vč. blob obsahů */
-    private function findStatements(int $sid, string $month): array
+    /** @return list<array<string,mixed>> výpisy za období vč. blob obsahů */
+    private function findStatements(int $sid, ExportPeriod $period): array
     {
         $sql = "SELECT bs.id, bs.account_number, bs.file_name, bs.file_content, bs.pdf_name, bs.pdf_content
                   FROM bank_statements bs
-                 WHERE DATE_FORMAT(bs.statement_date, '%Y-%m') = ?
+                 WHERE bs.statement_date >= ?
+                   AND bs.statement_date <  ?
                    AND EXISTS (
                        SELECT 1 FROM currencies cur
                         WHERE cur.supplier_id = ?
@@ -421,16 +450,17 @@ final class MonthlyExportService
                    )
                  ORDER BY bs.statement_date, bs.id";
         $stmt = $this->db->pdo()->prepare($sql);
-        $stmt->execute([$month, $sid]);
+        $stmt->execute([$period->dateFrom, $period->dateToExclusive, $sid]);
         return $stmt->fetchAll(\PDO::FETCH_ASSOC);
     }
 
     /** @return array{0:int,1:int} [bankPdfCount, bankGpcCount] bez načítání blobů */
-    private function countStatementFiles(int $sid, string $month): array
+    private function countStatementFiles(int $sid, ExportPeriod $period): array
     {
         $sql = "SELECT SUM(bs.pdf_content IS NOT NULL) AS pdf_count, SUM(bs.file_content IS NOT NULL) AS gpc_count
                   FROM bank_statements bs
-                 WHERE DATE_FORMAT(bs.statement_date, '%Y-%m') = ?
+                 WHERE bs.statement_date >= ?
+                   AND bs.statement_date <  ?
                    AND EXISTS (
                        SELECT 1 FROM currencies cur
                         WHERE cur.supplier_id = ?
@@ -439,7 +469,7 @@ final class MonthlyExportService
                           AND (bs.bank_code IS NULL OR cur.bank_code IS NULL OR cur.bank_code = bs.bank_code)
                    )";
         $stmt = $this->db->pdo()->prepare($sql);
-        $stmt->execute([$month, $sid]);
+        $stmt->execute([$period->dateFrom, $period->dateToExclusive, $sid]);
         $row = $stmt->fetch(\PDO::FETCH_ASSOC) ?: [];
         return [(int) ($row['pdf_count'] ?? 0), (int) ($row['gpc_count'] ?? 0)];
     }
@@ -517,7 +547,7 @@ final class MonthlyExportService
             'dph_book' => 'Kniha DPH (PDF)',
         ];
         $lines = [
-            'Měsíční export MyInvoice.cz', '============================',
+            'Hromadný export MyInvoice.cz', '============================',
         ];
         if (trim($companyName) !== '') {
             $lines[] = 'Firma: ' . $companyName;

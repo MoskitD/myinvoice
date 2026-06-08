@@ -5,6 +5,18 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.19.3] — 2026-06-08
+
+### Added
+
+- **Hromadný export umí celé čtvrtletí.** „Hromadný export" (dříve „Měsíční export", Daně → Hromadný export) má nově přepínač **Měsíc / Čtvrtletí** — kromě jednoho měsíce lze do jednoho ZIPu sbalit doklady za celý kvartál (`Q1`–`Q4`). Zařazení dokladů do období zůstává daňově korektní a shodné s výkazy DPH (vystavené dle DUZP, přijaté dle pozdějšího z DUZP/vystavení, výpisy dle data výpisu). **Kniha DPH** se u čtvrtletí přiloží jako **tři měsíční PDF** (jeden za každý měsíc kvartálu). Stejný kvartální režim už dříve nabídl i export vydaných a přijatých faktur.
+
+### Changed
+
+- **„Měsíční export" přejmenován na „Hromadný export".** Název v menu, na stránce i v ZIP balíčku (README) lépe vystihuje, že jde o kompletní balíček dokladů za zvolené období — měsíc i čtvrtletí. Manuál § 32.
+- **Export vydaných faktur má stejný vzhled jako Export přijatých.** Stránka „Export vydaných faktur" byla sjednocena s „Exportem přijatých faktur" — širší layout, výběr formátu v přehledné trojici karet s barevnými ikonami a konzistentní rozložení polí období / filtru / typu.
+- **Exporty defaultně nabízejí předchozí měsíc.** Všechny exporty (vydané, přijaté i hromadný) se otevírají s předvyplněným **minulým měsícem** místo rozpracovaného aktuálního — odpovídá tomu, že se export typicky dělá po uzávěrce právě skončeného měsíce.
+
 ## [4.19.2] — 2026-06-08
 
 ### Fixed

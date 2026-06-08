@@ -61,7 +61,7 @@ nasazuje). Zbytek je psaný pro běžného uživatele — bez programátorského
 29. [Souhrnné hlášení](29_Souhrnne_hlaseni.md)
 30. [Daň z příjmů](30_Dan_z_prijmu.md)
 31. [Daňový optimalizátor](31_Danovy_optimalizator.md)
-32. [Měsíční export](32_Mesicni_export.md)
+32. [Hromadný export](32_Hromadny_export.md)
 
 ### Systém
 

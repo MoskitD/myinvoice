@@ -7,8 +7,8 @@ formáty hromadného exportu **vystavených faktur** a per-faktura export
 > [!TIP]
 > Pokud chceš účetní za daný měsíc předat **vše najednou v jednom ZIP** (vystavené
 > i přijaté faktury, výpisy z účtu a knihu DPH, roztříděné do složek a s daňově
-> korektním zařazením do období), použij **Měsíční export** v sekci Daně — viz
-> [§ 30 Měsíční export (ZIP)](32_Mesicni_export.md). Exporty níže
+> korektním zařazením do období), použij **Hromadný export** v sekci Daně — viz
+> [Hromadný export (ZIP)](32_Hromadny_export.md). Exporty níže
 > jsou cílené na jeden formát / jeden typ dokladu.
 
 | Formát | Pro koho | Co obsahuje |
@@ -34,8 +34,8 @@ Formulář:
 
 Klik **Stáhnout** → soubor stažen do prohlížeče.
 
-Měsíční export použij pro běžné předání dokladů za jeden měsíc. Čtvrtletní
-export použij hlavně pro účetní předání za kvartál; aplikace vybere všechny
+Měsíční režim použij pro běžné předání dokladů za jeden měsíc. Čtvrtletní
+režim použij hlavně pro účetní předání za kvartál; aplikace vybere všechny
 doklady v rozsahu příslušného čtvrtletí podle zvoleného data filtru.
 
 ## 15.2 PDF ZIP
@@ -285,7 +285,7 @@ z globálního kurzu.
   měsíc.
 - **Vše v jednom balíčku** — když účetní chce za měsíc kompletní podklad
   (vystavené + přijaté faktury + výpisy + kniha DPH najednou), použij raději
-  [Měsíční export (ZIP)](32_Mesicni_export.md) v sekci Daně —
+  [Hromadný export (ZIP)](32_Hromadny_export.md) v sekci Daně —
   vyřeší zařazení do období daňově korektně a roztřídí vše do pojmenovaných
   složek.
 - **ISDOC i Pohoda** — pokud si nejsi jistý, který formát použít, **ISDOC**

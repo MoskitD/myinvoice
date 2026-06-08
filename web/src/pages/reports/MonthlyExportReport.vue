@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { reportsApi, type MonthlyExportPreview, type MonthlyExportPart, type MonthlyExportJob } from '@/api/reports'
+import { reportsApi, type MonthlyExportPreview, type MonthlyExportPart, type MonthlyExportJob, type ExportPeriodArg } from '@/api/reports'
 import { apiErrorMessage } from '@/api/errors'
 import { useToast } from '@/composables/useToast'
 import { useYearOptions } from '@/composables/useYearOptions'
@@ -9,13 +9,23 @@ import { useYearOptions } from '@/composables/useYearOptions'
 const { t, locale } = useI18n()
 const toast = useToast()
 
-// Default = předchozí měsíc: měsíční export se dělá po uzávěrce právě skončeného
+// Default = předchozí měsíc: hromadný export se dělá po uzávěrce právě skončeného
 // měsíce, ne rozpracovaného aktuálního. Date konstruktor normalizuje leden → prosinec
 // předchozího roku (getMonth() - 1 = -1).
+type PeriodType = 'monthly' | 'quarterly'
 const now = new Date()
 const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+const periodType = ref<PeriodType>('monthly')
 const year = ref(prevMonth.getFullYear())
 const month = ref(prevMonth.getMonth() + 1)
+const quarter = ref(Math.ceil((prevMonth.getMonth() + 1) / 3))
+const quarterOptions = [1, 2, 3, 4]
+
+const exportPeriod = computed<ExportPeriodArg>(() =>
+  periodType.value === 'quarterly'
+    ? { type: 'quarterly', year: year.value, quarter: quarter.value }
+    : { type: 'monthly', year: year.value, month: month.value },
+)
 
 // Pořadí částí v UI = pořadí, ve kterém je uživatel zmínil.
 const ALL_PARTS: MonthlyExportPart[] = [
@@ -42,7 +52,7 @@ async function loadPreview() {
   loading.value = true
   error.value = ''
   try {
-    preview.value = await reportsApi.monthlyExportPreview(year.value, month.value)
+    preview.value = await reportsApi.monthlyExportPreview(exportPeriod.value)
   } catch (e) {
     error.value = apiErrorMessage(e)
   } finally {
@@ -100,7 +110,7 @@ async function startExport() {
   starting.value = true
   error.value = ''
   try {
-    const r = await reportsApi.monthlyExportStart(year.value, month.value, selectedList.value)
+    const r = await reportsApi.monthlyExportStart(exportPeriod.value, selectedList.value)
     toast.success(t('reports.monthly_export.job.started', { jobId: r.job_id }))
     await loadJobs()
   } catch (e) {
@@ -136,9 +146,11 @@ function downloadJob(j: MonthlyExportJob) {
 }
 
 function periodLabel(j: MonthlyExportJob): string {
-  const p = j.params as { year?: number; month?: number } | null
-  if (!p?.year || !p?.month) return ''
-  return new Date(p.year, p.month - 1, 1).toLocaleDateString(locale.value === 'en' ? 'en-US' : 'cs-CZ', { month: 'long', year: 'numeric' })
+  const p = j.params as { period?: string; year?: number; month?: number; quarter?: number } | null
+  if (!p?.year) return ''
+  if (p.period === 'quarterly' && p.quarter) return `Q${p.quarter} ${p.year}`
+  if (p.month) return new Date(p.year, p.month - 1, 1).toLocaleDateString(locale.value === 'en' ? 'en-US' : 'cs-CZ', { month: 'long', year: 'numeric' })
+  return String(p.year)
 }
 function fmtSize(bytes: number | null): string {
   if (!bytes) return ''
@@ -169,7 +181,7 @@ const groups = computed(() => [
   { key: 'dph',      parts: ['dph_book'] as MonthlyExportPart[] },
 ])
 
-watch([year, month], loadPreview)
+watch([year, month, quarter, periodType], loadPreview)
 onMounted(() => { loadPreview(); loadJobs() })
 onUnmounted(() => { if (pollTimer) clearInterval(pollTimer) })
 </script>
@@ -182,9 +194,24 @@ onUnmounted(() => { if (pollTimer) clearInterval(pollTimer) })
         <h1 class="text-2xl font-semibold">{{ t('reports.monthly_export.title') }}</h1>
         <p class="text-sm text-neutral-500 mt-0.5">{{ t('reports.monthly_export.subtitle') }}</p>
       </div>
-      <div class="flex items-center gap-2">
-        <select v-model.number="month" :disabled="anyActive" class="h-9 px-3 border border-neutral-300 rounded-md bg-surface text-sm disabled:bg-neutral-100">
+      <div class="flex items-center gap-2 flex-wrap">
+        <div class="flex rounded-md border border-neutral-300 overflow-hidden text-sm">
+          <button type="button" @click="periodType = 'monthly'" :disabled="anyActive"
+            :class="periodType === 'monthly' ? 'bg-primary-600 text-white' : 'bg-surface text-neutral-700 hover:bg-neutral-50'"
+            class="cursor-pointer h-9 px-3 disabled:opacity-60">
+            {{ t('reports.monthly_export.period_month') }}
+          </button>
+          <button type="button" @click="periodType = 'quarterly'" :disabled="anyActive"
+            :class="periodType === 'quarterly' ? 'bg-primary-600 text-white' : 'bg-surface text-neutral-700 hover:bg-neutral-50'"
+            class="cursor-pointer h-9 px-3 border-l border-neutral-300 disabled:opacity-60">
+            {{ t('reports.monthly_export.period_quarter') }}
+          </button>
+        </div>
+        <select v-if="periodType === 'monthly'" v-model.number="month" :disabled="anyActive" class="h-9 px-3 border border-neutral-300 rounded-md bg-surface text-sm disabled:bg-neutral-100">
           <option v-for="(label, i) in monthOptions" :key="i + 1" :value="i + 1">{{ label }}</option>
+        </select>
+        <select v-else v-model.number="quarter" :disabled="anyActive" class="h-9 px-3 border border-neutral-300 rounded-md bg-surface text-sm disabled:bg-neutral-100">
+          <option v-for="q in quarterOptions" :key="q" :value="q">Q{{ q }}</option>
         </select>
         <select v-model.number="year" :disabled="anyActive" class="h-9 px-3 border border-neutral-300 rounded-md bg-surface text-sm disabled:bg-neutral-100">
           <option v-for="y in yearOptions" :key="y" :value="y">{{ y }}</option>

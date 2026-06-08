@@ -253,7 +253,7 @@ Vhodné použití:
 1. **Backend (`RoleMiddleware`)** — `readonly` smí výhradně `GET` requesty; jakýkoli
    zápis (`POST` / `PUT` / `PATCH` / `DELETE`) je odmítnut s `403`. Exporty i daňové
    výkazy jsou `GET`, proto k nim `readonly` má přístup. Jediná výjimka z pravidla
-   „jen GET": **měsíční export** (Daně → Měsíční export) běží jako background job,
+   „jen GET": **hromadný export** (Daně → Hromadný export) běží jako background job,
    takže jeho spuštění/zrušení/smazání jsou technicky `POST`/`DELETE` — věcně jde
    ale o čtení (sbalení existujících dokladů do ZIP), proto je povolen všem rolím.
    Admin endpointy (uživatelé, nastavení, integrace…) mají navíc **kontrolu role

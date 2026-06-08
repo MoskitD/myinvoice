@@ -10,26 +10,29 @@ type Format = 'pdf-zip' | 'pohoda' | 'isdoc'
 type DateBy = 'tax' | 'issue' | 'received'
 type PeriodType = 'monthly' | 'quarterly'
 
+// Default = předchozí měsíc: export se dělá po uzávěrce právě skončeného měsíce,
+// ne rozpracovaného aktuálního (getMonth()-1 = -1 normalizuje na prosinec loni).
 const now = new Date()
-const currentYear = now.getFullYear()
-const currentMonth = now.getMonth() + 1
+const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+const defYear = prev.getFullYear()
+const defMonth = prev.getMonth() + 1
 const format = ref<Format>('pdf-zip')
 // Default "issue" (datum vystavení) — odpovídá tomu, co je na fakturách napsané a co
 // uživatel typicky používá k organizaci archivu. tax (DUZP) má smysl pro DPH výkazy
 // a received (přijetí) jen pro audit kdy faktura přišla.
 const dateBy = ref<DateBy>('issue')
 const periodType = ref<PeriodType>('monthly')
-const month = ref<string>(`${currentYear}-${String(currentMonth).padStart(2, '0')}`)
-const year = ref(currentYear)
-const quarter = ref(Math.ceil(currentMonth / 3))
+const month = ref<string>(`${defYear}-${String(defMonth).padStart(2, '0')}`)
+const year = ref(defYear)
+const quarter = ref(Math.ceil(defMonth / 3))
 const yearOptions = useYearOptions('purchase_invoices', year)
 const quarterOptions = [1, 2, 3, 4]
 
 const monthParts = computed(() => {
   const [y, m] = month.value.split('-').map(Number)
   return {
-    year: Number.isFinite(y) ? y : currentYear,
-    month: Number.isFinite(m) ? m : currentMonth,
+    year: Number.isFinite(y) ? y : defYear,
+    month: Number.isFinite(m) ? m : defMonth,
   }
 })
 

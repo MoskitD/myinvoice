@@ -9,6 +9,8 @@ use MyInvoice\Http\SupplierGuard;
 use MyInvoice\Middleware\AuthMiddleware;
 use MyInvoice\Repository\ImportJobRepository;
 use MyInvoice\Service\ActivityLogger;
+use MyInvoice\Service\Export\ExportPeriod;
+use MyInvoice\Service\Export\ExportPeriodResolver;
 use MyInvoice\Service\Export\MonthlyExportService;
 use MyInvoice\Service\IpMatcher;
 use Psr\Http\Message\ResponseInterface as Response;
@@ -21,7 +23,8 @@ use Slim\Psr7\Stream;
  * PDF+GPC, Kniha DPH). Běží na pozadí jako Fakturoid import, protože renderování
  * PDF u hodně faktur může přesáhnout web timeout.
  *
- *   GET    /api/reports/monthly-export/preview?year=&month=     → počty per část
+ *   GET    /api/reports/monthly-export/preview?period=monthly&year=&month= → počty per část
+ *   GET    /api/reports/monthly-export/preview?period=quarterly&year=&quarter=1..4
  *   POST   /api/reports/monthly-export/start                    → vytvoří job + spawn worker
  *   GET    /api/reports/monthly-export/jobs/{id}                → stav jobu (polling)
  *   GET    /api/reports/monthly-export/jobs/{id}/download       → stáhne hotový ZIP
@@ -37,19 +40,21 @@ final class MonthlyExportAction
         private readonly MonthlyExportService $export,
         private readonly ActivityLogger $logger,
         private readonly IpMatcher $ipMatcher,
+        private readonly ExportPeriodResolver $periodResolver,
     ) {}
 
     /** GET /preview — počty dostupných položek per část. */
     public function preview(Request $request, Response $response): Response
     {
         if (($err = $this->guard($request, $response)) !== null) return $err;
-        [$month, $errResp] = $this->parsePeriod($request, $response);
+        [$period, $errResp] = $this->parsePeriod($request, $response);
         if ($errResp !== null) return $errResp;
         $sid = SupplierGuard::currentId($request);
 
         return Json::ok($response, [
-            'period' => $month,
-            'counts' => $this->export->previewCounts($sid, $month),
+            'period' => $period->label,
+            'period_type' => $period->type,
+            'counts' => $this->export->previewCounts($sid, $period),
         ]);
     }
 
@@ -57,7 +62,7 @@ final class MonthlyExportAction
     public function start(Request $request, Response $response): Response
     {
         if (($err = $this->guard($request, $response)) !== null) return $err;
-        [$month, $errResp] = $this->parsePeriod($request, $response);
+        [$period, $errResp] = $this->parsePeriod($request, $response);
         if ($errResp !== null) return $errResp;
         $sid = SupplierGuard::currentId($request);
         if ($sid === 0) {
@@ -75,12 +80,17 @@ final class MonthlyExportAction
         }
 
         $body = (array) ($request->getParsedBody() ?? []);
-        [$year, $mon] = array_map('intval', explode('-', $month));
         $rawParts = $body['parts'] ?? [];
         $parts = MonthlyExportService::normalizeParts(
             is_array($rawParts) ? array_map('strval', $rawParts) : []
         );
-        $params = ['year' => $year, 'month' => $mon, 'parts' => $parts];
+        $params = [
+            'period'  => $period->type,
+            'year'    => $period->year,
+            'month'   => $period->month,
+            'quarter' => $period->quarter,
+            'parts'   => $parts,
+        ];
 
         $user = (array) $request->getAttribute(AuthMiddleware::ATTR_USER, []);
         $userId = (int) ($user['id'] ?? 0);
@@ -221,17 +231,19 @@ final class MonthlyExportAction
         return null;
     }
 
-    /** @return array{0:string,1:?Response} [month YYYY-MM, errorResponse] */
+    /** @return array{0:?ExportPeriod,1:?Response} [period, errorResponse] */
     private function parsePeriod(Request $request, Response $response): array
     {
-        $q = $request->getQueryParams();
-        $body = (array) ($request->getParsedBody() ?? []);
-        $year = (int) ($q['year'] ?? $body['year'] ?? 0);
-        $month = (int) ($q['month'] ?? $body['month'] ?? 0);
-        if ($month < 1 || $month > 12 || $year < 2020 || $year > 2050) {
-            return ['', Json::error($response, 'validation_failed', 'Neplatný rok/měsíc.', 400)];
+        // Preview čte z query, start z těla; sjednotíme (tělo má přednost).
+        $merged = array_merge(
+            (array) $request->getQueryParams(),
+            (array) ($request->getParsedBody() ?? []),
+        );
+        try {
+            return [$this->periodResolver->resolve($merged), null];
+        } catch (\InvalidArgumentException $e) {
+            return [null, Json::error($response, 'validation_failed', $e->getMessage(), 400)];
         }
-        return [sprintf('%04d-%02d', $year, $month), null];
     }
 
     /** @return array<string,mixed>|null */

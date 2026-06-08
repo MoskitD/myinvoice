@@ -1,15 +1,18 @@
-# 32. Měsíční export (ZIP)
+# 32. Hromadný export (ZIP)
 
-### Cesta: `Daně → Měsíční export`
+### Cesta: `Daně → Hromadný export`
 
-Stáhne **jeden ZIP** za zvolený měsíc se vším, co účetní pro daný měsíc potřebuje,
-roztříděné do pojmenovaných složek. Zaškrtnutím vyberete, co se zabalí:
+Stáhne **jeden ZIP** za zvolené období se vším, co účetní pro dané období potřebuje,
+roztříděné do pojmenovaných složek. Období může být **jeden měsíc**, nebo **celé
+čtvrtletí** (`Q1`–`Q4`) — přepínač je nahoře vedle výběru období. Zaškrtnutím
+vyberete, co se zabalí:
 
 - **Vystavené faktury** — PDF a/nebo ISDOC
 - **Přijaté faktury** — PDF a/nebo ISDOC (u PDF má přednost originál od dodavatele;
   pokud chybí, vloží se naše rekonstrukce s příponou `-rekonstrukce`)
 - **Výpisy z účtu** — PDF a/nebo GPC (originální soubory)
-- **Kniha DPH** — měsíční PDF žurnál
+- **Kniha DPH** — měsíční PDF žurnál (u čtvrtletí se přiloží **tři** PDF, jeden za
+  každý měsíc kvartálu)
 
 U každé části se hned ukáže počet dostupných dokladů; prázdné části nejdou zaškrtnout.
 
@@ -28,5 +31,5 @@ jdou stáhnout opakovaně; soubor se stažením nemaže. Úklid proběhne automa
 
 > [!TIP]
 > Pro jednoúčelové formáty (jen ISDOC vydaných, jen Pohoda XML) použij
-> [Exporty](15_Exporty.md) v sekci Prodej. Měsíční export je komplexní balíček
-> „všechno za měsíc pro účetní".
+> [Exporty](15_Exporty.md) v sekci Prodej. Hromadný export je komplexní balíček
+> „všechno za období pro účetní".
