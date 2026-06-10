@@ -181,16 +181,25 @@ final class StatementMatcher
         // porovnáváme v měně transakce — u cizoměnové faktury placené z CZK účtu přes
         // kurz faktury (viz expectedMatch). Nebezpečný případ (EUR výpis × CZK faktura
         // stejného VS+amount) expectedMatch vrátí null → zůstane unmatched.
+        // VS match: 1) přesná shoda (rychlá cesta pro čistě číselné VS), 2) numerická
+        // shoda po normalizaci — `invoices.varsymbol` slouží i jako číslo dokladu, takže
+        // může nést pomlčku/lomítko (např. „2026-00001"), zatímco banka pošle jen číslice
+        // („202600001"). CAST(REGEXP_REPLACE(...) AS UNSIGNED) zrcadlí
+        // VariableSymbolNormalizer::forMatching (číslice bez vodicích nul). REGEXP '[1-9]'
+        // vyřadí prázdné / samé-nuly varsymboly (CAST '' → 0), aby nevznikla planá shoda.
+        $vsDigits = VariableSymbolNormalizer::digits((string) $vs);
         $sql = "SELECT i.id, i.varsymbol, i.amount_to_pay, i.exchange_rate, i.status, i.invoice_type, cur.code AS currency
                   FROM invoices i
                   JOIN currencies cur ON cur.id = i.currency_id
                  WHERE i.supplier_id = ?
-                   AND i.varsymbol = ?
+                   AND (i.varsymbol = ?
+                        OR (i.varsymbol REGEXP '[1-9]'
+                            AND CAST(REGEXP_REPLACE(i.varsymbol, '[^0-9]', '') AS UNSIGNED) = CAST(? AS UNSIGNED)))
                    AND i.status IN ('issued', 'sent', 'reminded', 'paid')
                    AND i.invoice_type IN ('invoice', 'proforma')
                  LIMIT 1";
         $stmt = $pdo->prepare($sql);
-        $stmt->execute([$supplierId, $vs]);
+        $stmt->execute([$supplierId, $vs, $vsDigits]);
         $inv = $stmt->fetch(PDO::FETCH_ASSOC);
         if (!$inv) {
             return ['status' => 'unmatched', 'reason' => 'no_invoice_with_vs', 'tx_currency' => $txCurrency];
@@ -277,17 +286,24 @@ final class StatementMatcher
         // je interní PF-YYYYMM-NNNN, jen občas se s `vendor_invoice_number` shodují
         // (když user nepoužívá auto-counter). Hledáme proto OR na obojí — uživatel může
         // platit pod naším PF-... i pod původním číslem dodavatele.
+        // Přesná shoda na náš VS i VS dodavatele + numerická shoda po normalizaci
+        // (číslo dokladu s pomlčkou „PF-2026-0001" × jen-číslice z banky). Viz match().
+        $vsDigits = VariableSymbolNormalizer::digits($vs);
         $sql = "SELECT pi.id, pi.varsymbol, pi.vendor_invoice_number,
                        COALESCE(pi.amount_to_pay, pi.total_with_vat, 0) AS amount_to_pay,
                        pi.exchange_rate, pi.status, cur.code AS currency
                   FROM purchase_invoices pi
              LEFT JOIN currencies cur ON cur.id = pi.currency_id
                  WHERE pi.supplier_id = ?
-                   AND (pi.varsymbol = ? OR pi.vendor_invoice_number = ?)
+                   AND (pi.varsymbol = ? OR pi.vendor_invoice_number = ?
+                        OR (pi.varsymbol REGEXP '[1-9]'
+                            AND CAST(REGEXP_REPLACE(pi.varsymbol, '[^0-9]', '') AS UNSIGNED) = CAST(? AS UNSIGNED))
+                        OR (pi.vendor_invoice_number REGEXP '[1-9]'
+                            AND CAST(REGEXP_REPLACE(pi.vendor_invoice_number, '[^0-9]', '') AS UNSIGNED) = CAST(? AS UNSIGNED)))
                    AND pi.status IN ('received', 'booked', 'paid')
                  LIMIT 1";
         $stmt = $pdo->prepare($sql);
-        $stmt->execute([$supplierId, $vs, $vs]);
+        $stmt->execute([$supplierId, $vs, $vs, $vsDigits, $vsDigits]);
         $pi = $stmt->fetch(PDO::FETCH_ASSOC);
         if (!$pi) {
             return ['status' => 'unmatched', 'reason' => 'no_purchase_with_vs', 'tx_currency' => $txCurrency];

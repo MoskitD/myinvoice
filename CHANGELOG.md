@@ -5,6 +5,12 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **Variabilní symbol s pomlčkou (z čísla dokladu jako `2026-00001`) neprošel přes banku a kazil QR i párování plateb (#58).** Když dokladová řada obsahovala nečíselný znak (pomlčku/lomítko, např. řada `{YYYY}-{CCCCC}`), ukládal se takový variabilní symbol i do QR platby (SPAYD) — tu banka odmítá, protože VS musí být jen číslice — a automatické párování příchozích plateb (z výpisů i e-mailových avíz) ho nikdy nespárovalo, protože banka přenese jen číslice (`202600001`). Nově se VS pro platbu i QR vždy normalizuje na čistě číselný (max 10 znaků) a párování porovnává variabilní symbol **číselně** (ignoruje pomlčky, lomítka i vodicí nuly) na straně vydaných i přijatých faktur, takže se spárují i doklady s pomlčkou v čísle. V tištěné faktuře se v řádku *Var. symbol* zobrazuje platný číselný VS (velký titulek dokladu zůstává s pomlčkou).
+
 ## [4.21.0] — 2026-06-10
 
 ### Added

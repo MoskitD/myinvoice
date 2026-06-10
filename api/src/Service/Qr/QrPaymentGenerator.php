@@ -9,6 +9,7 @@ use chillerlan\QRCode\Output\QRGdImagePNG;
 use chillerlan\QRCode\QRCode;
 use chillerlan\QRCode\QROptions;
 use MyInvoice\Infrastructure\Config\Config;
+use MyInvoice\Service\Bank\VariableSymbolNormalizer;
 use Psr\Log\LoggerInterface;
 use Rikudou\CzQrPayment\QrPayment as CzQrPayment;
 use Rikudou\Iban\Iban\CzechIbanAdapter;
@@ -96,12 +97,19 @@ final class QrPaymentGenerator
             return null;
         }
 
+        // VS pro SPAYD musí být jen číslice (max 10) — `varsymbol` může nést číslo
+        // dokladu s pomlčkou/lomítkem (např. „2026-00001"), které banka odmítne.
+        // Komentář naopak necháváme s původním číslem dokladu (čitelnější pro plátce).
+        $vs = VariableSymbolNormalizer::forPayment($varsymbol);
+
         $payment->setAmount($amount)
             ->setCurrency('CZK')
-            ->setVariableSymbol($varsymbol)
             ->setConstantSymbol((string) $this->config->get('qr.czk_constant_symbol', '0308'))
             ->setDueDate($dueDate ?? new \DateTimeImmutable())
             ->setComment($message ?? ('Faktura ' . $varsymbol));
+        if ($vs !== '') {
+            $payment->setVariableSymbol($vs);
+        }
 
         return $payment->getQrString();
     }

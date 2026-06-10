@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MyInvoice\Service\Bank\EmailNotice\Parser;
 
 use MyInvoice\Service\Bank\EmailNotice\EmailNoticeTextNormalizer;
+use MyInvoice\Service\Bank\VariableSymbolNormalizer;
 
 /**
  * Společná vrstva parserů bankovních e-mailových avíz (PR #118, @blondak) —
@@ -167,14 +168,12 @@ abstract class AbstractBankEmailNoticeParser implements BankEmailNoticeParserInt
     /** VS/KS/SS: jen číslice bez leading nul (konzistentní s párováním GPC). */
     protected function normalizeSymbol(string $value): string
     {
-        $digits = $this->digitsOnly($value);
-        $trimmed = ltrim($digits, '0');
-        return $trimmed !== '' ? $trimmed : $digits;
+        return VariableSymbolNormalizer::forMatching($value);
     }
 
     protected function digitsOnly(string $value): string
     {
-        return preg_replace('/\D+/', '', $value) ?? '';
+        return VariableSymbolNormalizer::digits($value);
     }
 
     protected function cleanNullable(string $value): ?string

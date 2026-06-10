@@ -9,6 +9,7 @@ use MyInvoice\Http\SupplierGuard;
 use MyInvoice\Infrastructure\Config\Config;
 use MyInvoice\Infrastructure\Config\RuntimePaths;
 use MyInvoice\Repository\PurchaseInvoiceRepository;
+use MyInvoice\Service\Bank\VariableSymbolNormalizer;
 use MyInvoice\Service\Import\AnthropicClient;
 use MyInvoice\Service\Import\IsdocParser;
 use MyInvoice\Service\Import\PdfIsdocExtractor;
@@ -296,9 +297,9 @@ final class PaymentQrAction
             (string) ($invoice['varsymbol'] ?? ''),
         ];
         foreach ($candidates as $c) {
-            $digits = preg_replace('/\D/', '', $c) ?? '';
-            if ($digits !== '') {
-                return substr($digits, 0, 10);
+            $vs = VariableSymbolNormalizer::forPayment($c);
+            if ($vs !== '') {
+                return $vs;
             }
         }
         return '';

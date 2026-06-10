@@ -10,6 +10,7 @@ use MyInvoice\Infrastructure\Config\Config;
 use MyInvoice\Infrastructure\Database\Connection;
 use MyInvoice\Repository\InvoiceRepository;
 use MyInvoice\Repository\WorkReportRepository;
+use MyInvoice\Service\Bank\VariableSymbolNormalizer;
 use MyInvoice\Service\Branding\AccentColor;
 use MyInvoice\Service\Export\IsdocExporter;
 use MyInvoice\Service\Invoice\SnapshotBuilder;
@@ -262,6 +263,10 @@ final class InvoicePdfRenderer
             'client'            => $clientData,
             'bank'              => $bankData,
             'qr_data_uri'       => $qrUri,
+            // Platební VS = jen číslice (max 10) — `varsymbol` může nést pomlčku z čísla
+            // dokladu, kterou banka nepřijme. Velký titulek dokladu zůstává s pomlčkou,
+            // ale do platebního řádku tiskneme validní VS (shodné s QR a párováním).
+            'payment_varsymbol' => VariableSymbolNormalizer::forPayment((string) ($invoice['varsymbol'] ?? '')),
             'is_paid'           => $isPaid,
             'payment_method'    => $paymentMethod,
             'locale'            => $locale,

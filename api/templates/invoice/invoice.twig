@@ -121,7 +121,7 @@
     <td class="meta-label">{{ t('Vystaveno', 'Issued') }}</td>
     <td class="meta-value">{{ invoice.issue_date|date(date_format) }}</td>
     <td class="meta-label">{{ t('Var. symbol', 'Var. symbol') }}</td>
-    <td class="meta-value mono">{{ invoice.varsymbol|default('—') }}</td>
+    <td class="meta-value mono">{{ payment_varsymbol|default(invoice.varsymbol)|default('—') }}</td>
   </tr>
   {# Identifikovaná osoba (§ 6g–6l, #94) na zahraničním RC dokladu řádek
      „Není plátce DPH" nemá — matl by příjemce, který má daň samovyměřit;

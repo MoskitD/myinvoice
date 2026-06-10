@@ -65,6 +65,28 @@ final class QrPaymentGeneratorTest extends TestCase
         self::assertNotNull($uri);
     }
 
+    public function testCzkWithDashedVarsymbolStillGenerates(): void
+    {
+        // Regrese #58: varsymbol s pomlčkou (číslo dokladu „2026-00001") dřív SPAYD
+        // knihovna odmítla (nečíselný VS) → QR se nevykreslil. Po normalizaci projde.
+        $uri = $this->gen->generate('CZK', 1000.0, '2026-00001', [
+            'account_number' => '2000145399',
+            'bank_code'      => '0800',
+        ]);
+        self::assertNotNull($uri);
+        self::assertStringStartsWith('data:image/png;base64,', $uri);
+    }
+
+    public function testCzkWithNonNumericVarsymbolDoesNotCrash(): void
+    {
+        // Zcela nečíselný VS → QR bez VS pole (lepší než žádný QR / fatální chyba).
+        $uri = $this->gen->generate('CZK', 1000.0, 'ABC-XYZ', [
+            'account_number' => '2000145399',
+            'bank_code'      => '0800',
+        ]);
+        self::assertNotNull($uri);
+    }
+
     public function testReturnsNullForZeroAmount(): void
     {
         self::assertNull($this->gen->generate('CZK', 0.0, '12345', [
