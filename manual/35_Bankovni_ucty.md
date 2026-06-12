@@ -71,7 +71,7 @@ Provider říká, jak poznat e-mail dané banky a jak z něj vytěžit platební
 
 Typy providerů:
 
-- **Systémový provider** — dodaný aplikací, např. Raiffeisenbank, UniCredit Bank, ČSOB nebo Česká spořitelna.
+- **Systémový provider** — dodaný aplikací, např. Raiffeisenbank, UniCredit Bank, ČSOB, Česká spořitelna nebo Fio banka.
 - **Regex provider** — vlastní provider dodavatele, konfigurovaný v UI.
 
 U regex provideru nastavuješ:

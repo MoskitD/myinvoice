@@ -5,6 +5,12 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.24.0] — 2026-06-12
+
+### Added
+
+- **Systémový parser e-mailových avíz Fio banky (#58).** Avíza *„Fio banka - prijem/vydaj na konte"* od `automat@fio.cz` se nově zpracovávají automaticky jako u ostatních podporovaných bank — bez jakékoli konfigurace, stačí v *Nastavení → Bankovní avíza* namapovat účet. Parser řeší specifika Fio avíz: tělo neobsahuje datum platby (bere se z hlavičky e-mailu) ani měnu (výchozí CZK; uvedený kód měny se respektuje), směr platby určuje text *„Příjem/Výdaj na kontě"* (výdaje se evidují se záporným znaménkem, takže se nepárují proti pohledávkám) a číslo účtu bez kódu banky se doplní o `/2010`. Vytěžuje se variabilní symbol, protiúčet, konstantní symbol i zpráva příjemci; odesílatel se ověřuje proti doméně `fio.cz` (ochrana proti spoofingu subdoménou).
+
 ## [4.23.0] — 2026-06-12
 
 ### Added
