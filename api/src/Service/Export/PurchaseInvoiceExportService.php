@@ -139,8 +139,9 @@ final class PurchaseInvoiceExportService
             'client'            => $ourSnapshot,
             'items'             => $items,
             // Rekapitulace DPH + souhrny — oba exportéry je čtou z `vat_breakdown`/`totals`
-            // (bez nich byly summary/TaxTotal nulové). Repo je dodává ve find().
-            'vat_breakdown'     => $pi['vat_breakdown'] ?? [],
+            // (bez nich byly summary/TaxTotal nulové). Repo je dodává ve find(), ale jiným
+            // klíčováním než vydané → přemapovat na kanonický tvar `rate`/`base`/`vat`.
+            'vat_breakdown'     => self::normalizeVatBreakdown($pi['vat_breakdown'] ?? []),
             'totals'            => $pi['totals'] ?? [
                 'without_vat' => (float) ($pi['total_without_vat'] ?? 0),
                 'vat'         => (float) ($pi['total_vat'] ?? 0),
@@ -157,6 +158,31 @@ final class PurchaseInvoiceExportService
             // Marker pro export — pomáhá exportérovi vědět, že jde o přijatou
             '_direction'        => 'purchase',
         ];
+    }
+
+    /**
+     * Sjednotí rozpis DPH na kanonický tvar, který čtou exportéry (`rate`/`base`/`vat`).
+     *
+     * PurchaseInvoiceRepository::buildVatBreakdown vrací klíče `vat_rate`/`without_vat`/
+     * `with_vat` (jiné než InvoiceRepository u vydaných faktur: `rate`/`base`/`vat`). Bez
+     * tohoto přemapování četly `PohodaXmlExporter::bucketsFromBreakdown` i `classifyVat`
+     * a `IsdocExporter::TaxTotal` chybějící klíče jako 0 → NULOVÝ summary/rekapitulace a
+     * chybná klasifikace DPH (maxRate=0 → UNX/nonSubsume). Tolerujeme oba tvary.
+     *
+     * @param list<array<string,mixed>> $breakdown
+     * @return list<array{rate: float, base: float, vat: float}>
+     */
+    public static function normalizeVatBreakdown(array $breakdown): array
+    {
+        $out = [];
+        foreach ($breakdown as $b) {
+            $out[] = [
+                'rate' => (float) ($b['rate'] ?? $b['vat_rate'] ?? 0),
+                'base' => (float) ($b['base'] ?? $b['without_vat'] ?? 0),
+                'vat'  => (float) ($b['vat'] ?? 0),
+            ];
+        }
+        return $out;
     }
 
     private function loadSupplierSnapshot(int $supplierId): array

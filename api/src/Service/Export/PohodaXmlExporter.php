@@ -7,6 +7,7 @@ namespace MyInvoice\Service\Export;
 use MyInvoice\Infrastructure\Database\Connection;
 use MyInvoice\Repository\InvoiceRepository;
 use MyInvoice\Repository\TaxConstantsRepository;
+use MyInvoice\Service\Bank\VariableSymbolNormalizer;
 
 /**
  * Stormware Pohoda XML data package exporter.
@@ -164,11 +165,25 @@ final class PohodaXmlExporter
                 };
             $this->el($dom, $hdr, self::NS_INV, 'inv:invoiceType', $invType);
 
-            $num = $dom->createElementNS(self::NS_INV, 'inv:number');
-            $this->el($dom, $num, self::NS_TYP, 'typ:numberRequested', (string) ($invoice['varsymbol'] ?? ''));
-            $hdr->appendChild($num);
+            $vs = (string) ($invoice['varsymbol'] ?? '');
+            // Evidenční číslo dokladu (numberRequested) jen u VYDANÝCH — je to NAŠE číslo
+            // z naší číselné řady. U PŘIJATÉ faktury je `varsymbol` číslo DODAVATELE; vnucovat
+            // ho do naší řady (navíc numberRequested má checkDuplicity=true → import spadne na
+            // duplicitě a u nečíselného čísla je to i špatný typ) je chyba — necháme Pohodu
+            // přidělit interní číslo z agendy přijatých faktur (element vynecháme).
+            if (!$isPurchase && $vs !== '') {
+                $num = $dom->createElementNS(self::NS_INV, 'inv:number');
+                $this->el($dom, $num, self::NS_TYP, 'typ:numberRequested', $vs);
+                $hdr->appendChild($num);
+            }
 
-            $this->el($dom, $hdr, self::NS_INV, 'inv:symVar', (string) ($invoice['varsymbol'] ?? ''));
+            // Variabilní symbol je platební pole Pohody → musí být číselný (max 10). `varsymbol`
+            // může nést nečíselné znaky (číslo dokladu dodavatele i naše řada `2026-00001`),
+            // proto normalizujeme stejně jako pro banku/QR. Prázdný symVar neemitujeme.
+            $symVar = VariableSymbolNormalizer::forPayment($vs);
+            if ($symVar !== '') {
+                $this->el($dom, $hdr, self::NS_INV, 'inv:symVar', $symVar);
+            }
             $this->el($dom, $hdr, self::NS_INV, 'inv:date', (string) $invoice['issue_date']);
             if (!empty($invoice['tax_date'])) {
                 $this->el($dom, $hdr, self::NS_INV, 'inv:dateTax', (string) $invoice['tax_date']);
@@ -178,11 +193,21 @@ final class PohodaXmlExporter
 
             // Klasifikace DPH (per-faktura — vezme se nejvyšší VAT rate z položek; mix se v praxi
             // řeší per-položka v invoiceItem). Pohoda vyžaduje strukturované dítě, ne prostý text.
-            $defaultVatClass = $this->classifyVat($invoice);
-            $classEl = $dom->createElementNS(self::NS_INV, 'inv:classificationVAT');
-            $this->el($dom, $classEl, self::NS_TYP, 'typ:ids', $defaultVatClass['ids']);
-            $this->el($dom, $classEl, self::NS_TYP, 'typ:classificationVATType', $defaultVatClass['type']);
-            $hdr->appendChild($classEl);
+            // `typ:ids` jsou členění DPH kódy Pohody (UDA5 = USKUTEČNĚNÉ/výstupní plnění) —
+            // platí pro VYDANÉ. U PŘIJATÝCH faktur (vstupní DPH / nárok na odpočet) by výstupní
+            // kód byl chybný směr a navíc je členění specifické pro konkrétní instalaci Pohody,
+            // proto kód neposíláme a necháme Pohodu doplnit správné členění pro agendu
+            // receivedInvoice; uvádíme jen typ (inland/nonSubsume).
+            // U zálohové/proforma faktury se classificationVAT dle schématu nepoužívá → vynecháme.
+            if (($invoice['invoice_type'] ?? '') !== 'proforma') {
+                $defaultVatClass = $this->classifyVat($invoice);
+                $classEl = $dom->createElementNS(self::NS_INV, 'inv:classificationVAT');
+                if (!$isPurchase) {
+                    $this->el($dom, $classEl, self::NS_TYP, 'typ:ids', $defaultVatClass['ids']);
+                }
+                $this->el($dom, $classEl, self::NS_TYP, 'typ:classificationVATType', $defaultVatClass['type']);
+                $hdr->appendChild($classEl);
+            }
 
             // Číslo objednávky / poznámka
             if (!empty($invoice['note_above_items'])) {

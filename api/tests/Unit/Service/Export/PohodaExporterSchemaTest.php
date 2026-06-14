@@ -138,6 +138,54 @@ final class PohodaExporterSchemaTest extends TestCase
             $xml, '//inv:invoiceHeader/inv:partnerIdentity/typ:address/typ:ico'));
     }
 
+    public function testReceivedClassificationVatHasNoOutputSideCodeButCorrectType(): void
+    {
+        // U přijaté faktury NEposíláme výstupní členění (UDA5…) — to je špatný směr
+        // a instalace-specifický kód. Posíláme jen typ; pro 21 % tuzemsky = inland
+        // (NE UNX/nonSubsume, což byl dřív příznak rozbité rekapitulace s maxRate=0).
+        $xml = $this->exporter->buildXml([$this->receivedInvoice()], $this->purchaseCfg());
+
+        self::assertNull($this->xpathOne($xml, '//inv:invoiceHeader/inv:classificationVAT/typ:ids'),
+            'přijatá faktura nemá nést výstupní členění DPH (typ:ids)');
+        self::assertSame('inland', $this->xpathOne(
+            $xml, '//inv:invoiceHeader/inv:classificationVAT/typ:classificationVATType'));
+    }
+
+    public function testReceivedInvoiceOmitsOurDocumentNumberAndHasNumericSymVar(): void
+    {
+        // U přijaté faktury nevnucujeme číslo dodavatele do naší číselné řady (numberRequested),
+        // a symVar je čistě číselný platební VS (max 10).
+        $xml = $this->exporter->buildXml(
+            [$this->receivedInvoice(['varsymbol' => 'PF-2026-0007'])], $this->purchaseCfg());
+
+        $this->assertValidPohoda($xml);
+        self::assertNull($this->xpathOne($xml, '//inv:invoiceHeader/inv:number'),
+            'přijatá faktura nemá nést naše evidenční číslo (numberRequested)');
+        self::assertSame('20260007', $this->xpathOne($xml, '//inv:invoiceHeader/inv:symVar'));
+    }
+
+    public function testReceivedAdvanceOmitsClassificationVat(): void
+    {
+        // classificationVAT se dle schématu nepoužívá u zálohové/proforma faktury.
+        $xml = $this->exporter->buildXml(
+            [$this->receivedInvoice(['invoice_type' => 'proforma'])], $this->purchaseCfg());
+
+        $this->assertValidPohoda($xml);
+        self::assertSame('receivedAdvanceInvoice', $this->xpathOne($xml, '//inv:invoiceType'));
+        self::assertNull($this->xpathOne($xml, '//inv:invoiceHeader/inv:classificationVAT'),
+            'zálohová/proforma faktura nemá nést classificationVAT');
+    }
+
+    public function testIssuedInvoiceKeepsRequestedNumberAndNumericSymVar(): void
+    {
+        // Vydaná faktura: NAŠE číslo do číselné řady zůstává; symVar je číselný.
+        $xml = $this->exporter->buildXml(
+            [$this->issuedInvoice(['varsymbol' => '2026-00042'])], $this->issuedCfg());
+
+        self::assertSame('2026-00042', $this->xpathOne($xml, '//inv:invoiceHeader/inv:number/typ:numberRequested'));
+        self::assertSame('202600042', $this->xpathOne($xml, '//inv:invoiceHeader/inv:symVar'));
+    }
+
     public function testReceivedCreditNoteAndAdvanceTypes(): void
     {
         $credit = $this->exporter->buildXml([$this->receivedInvoice(['invoice_type' => 'credit_note'])], $this->purchaseCfg());

@@ -5,6 +5,14 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.26.1] — 2026-06-14
+
+### Fixed
+
+- **Dokončení opravy exportu přijatých faktur (návaznost na 4.26.0).** Rekapitulace DPH se mezi databází a exportérem klíčovala odlišně (`vat_rate`/`without_vat` u přijatých vs. `rate`/`base` u vydaných), takže souhrn v Pohoda XML (`homeCurrency`) i ISDOC (`TaxTotal` / `LegalMonetaryTotal`) u přijatých faktur vycházel **nulový** a klasifikace DPH spadla na `UNX` / `nonSubsume` (osvobozeno) místo skutečné sazby. Nově se rozpis přemapuje na kanonický tvar — souhrn i rekapitulace nesou správné základy, daň i sazby. **Vydaných faktur se tento problém netýkal** (jejich rozpis byl klíčovaný správně).
+- **Členění DPH u přijatých faktur.** Pohoda export už přijaté faktuře nevnucuje výstupní (uskutečněné) členění DPH typu `UDA5` — to je nejen špatný směr (u přijaté faktury jde o vstupní DPH / nárok na odpočet), ale i kód specifický pro konkrétní instalaci Pohody. Posílá se jen typ plnění (`inland` / `nonSubsume`) a správné členění pro agendu *přijatá faktura* doplní Pohoda. U zálohové/proforma faktury se `classificationVAT` neposílá vůbec (schéma ho pro zálohy nepoužívá).
+- **Evidenční číslo a variabilní symbol přijaté faktury v Pohodě.** Přijatá faktura už nevnucuje číslo dokladu dodavatele do naší číselné řady (`numberRequested` s `checkDuplicity` → import padal na duplicitě, navíc u nečíselného čísla šlo o špatný typ pole) — interní číslo přidělí Pohoda z agendy přijatých faktur. Variabilní symbol se navíc normalizuje na číselný tvar (max 10 číslic, stejně jako pro banku a QR), aby prošel platebním stykem. Doplněn integrační test exportu přijatých faktur nad reálnými daty (XSD validace + nenulová rekapitulace).
+
 ## [4.26.0] — 2026-06-14
 
 ### Fixed
