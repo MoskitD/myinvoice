@@ -218,6 +218,30 @@ final class TaxOptimizer
         $rate = (int) ($profile['activity_rate'] ?? 40);
         $declared = (string) ($profile['flat_tax_band'] ?? 'none');
 
+        // Projekce ZISKU (příjmy − výdaje) pro limit vedlejší činnosti. Výdaje dle
+        // profilu: skutečné (roční odhad), nebo výdajový paušál % se stropem — stejně
+        // jako computeRegular(). Rozhodná částka se měří proti zisku, ne příjmu.
+        $useActual = !empty($profile['use_actual_expenses']);
+        $projectedExpenses = $useActual
+            ? max(0.0, (float) ($profile['actual_expenses'] ?? 0))
+            : min($projected * $rate / 100, (float) ($c['expense_caps'][$rate] ?? PHP_INT_MAX));
+        $projectedProfit = max(0.0, $projected - $projectedExpenses);
+
+        // Vedlejší SVČ: rozhodná částka pro povinnou účast na důchodovém pojištění.
+        // Měsíc dopočítáme z rovnoměrného tempa zisku (nepotřebuje YTD výdaje).
+        $secondarySocial = null;
+        if (!empty($profile['is_secondary']) && isset($c['social_secondary_participation_threshold'])) {
+            $threshold = (float) $c['social_secondary_participation_threshold'];
+            $willCross = $projectedProfit >= $threshold;
+            $profitRunRate = $projectedProfit / 12;
+            $secondarySocial = [
+                'threshold'        => $threshold,
+                'projected_profit' => round($projectedProfit, 0),
+                'will_cross'       => $willCross,
+                'month'            => $willCross && $profitRunRate > 0 ? (int) ceil($threshold / $profitRunRate) : null,
+            ];
+        }
+
         $thresholds = [];
         if ($declared !== 'none' && isset($c['band_ceilings'][$rate][$declared])) {
             $thresholds[] = ['key' => 'band_ceiling', 'label' => 'strop pásma ' . $declared, 'value' => (float) $c['band_ceilings'][$rate][$declared]];
@@ -258,7 +282,9 @@ final class TaxOptimizer
             'months_elapsed' => $monthsElapsed,
             'run_rate'       => round($runRate, 0),
             'projected'      => round($projected, 0),
+            'projected_profit' => round($projectedProfit, 0),
             'crossings'      => $crossings,
+            'secondary_social' => $secondarySocial,
             'defer_advice'   => $defer,
         ];
     }

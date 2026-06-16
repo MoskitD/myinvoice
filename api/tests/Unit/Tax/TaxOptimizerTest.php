@@ -143,4 +143,24 @@ final class TaxOptimizerTest extends TestCase
         self::assertSame(12, $vatLow['month']);
         self::assertNotNull($pred['defer_advice']);
     }
+
+    /** Vedlejší limit jen při is_secondary; měří se proti ZISKU (60 % paušál → zisk 40 %). */
+    public function testPredictSecondarySocialThreshold(): void
+    {
+        // Bez vedlejší činnosti se blok vůbec nepočítá.
+        $pred = $this->opt->predict($this->profile(), 150_000, 6, $this->c);
+        self::assertNull($pred['secondary_social']);
+
+        // Vedlejší + 60 % paušál: projekce 300k příjmu → zisk 120k ≥ 111 736 → překročí.
+        $cross = $this->opt->predict($this->profile(['is_secondary' => true]), 150_000, 6, $this->c);
+        self::assertSame(120000.0, $cross['secondary_social']['projected_profit']); // 300k − 60 %
+        self::assertSame(111736.0, $cross['secondary_social']['threshold']);
+        self::assertTrue($cross['secondary_social']['will_cross']);
+        self::assertSame(12, $cross['secondary_social']['month']); // ceil(111 736 / 10 000)
+
+        // Nízký zisk (projekce 100k → zisk 40k) zůstane pod limitem.
+        $under = $this->opt->predict($this->profile(['is_secondary' => true]), 50_000, 6, $this->c);
+        self::assertFalse($under['secondary_social']['will_cross']);
+        self::assertNull($under['secondary_social']['month']);
+    }
 }

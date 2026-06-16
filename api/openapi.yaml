@@ -4363,6 +4363,7 @@ components:
         - health_assessment_pct
         - social_min_base_main
         - social_min_base_secondary
+        - social_secondary_participation_threshold
         - health_min_base
         - mortgage_cap
         - pension_cap
@@ -4387,6 +4388,7 @@ components:
         health_assessment_pct: { type: number }
         social_min_base_main: { type: number }
         social_min_base_secondary: { type: number }
+        social_secondary_participation_threshold: { type: number, description: Rozhodná částka (zisk) pro povinnou účast na důch. pojištění u vedlejší SVČ }
         health_min_base: { type: number }
         mortgage_cap: { type: number, description: Strop odpočtu úroků z hypotéky }
         pension_cap: { type: number }

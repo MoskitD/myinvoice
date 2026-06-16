@@ -22,6 +22,7 @@ final class TaxConstantsTest extends TestCase
         self::assertSame(0.50, $c['health_assessment_pct']);     // ← zdravotní 50 %, ne 55 %
         self::assertSame(195540, $c['social_min_base_main']);    // 35 % × 46 557 × 12
         self::assertSame(61476, $c['social_min_base_secondary']);
+        self::assertSame(111736, $c['social_secondary_participation_threshold']); // rozhodná částka vedlejší SVČ (ČSSZ)
         self::assertSame(279342, $c['health_min_base']);         // 50 % × 46 557 × 12
         self::assertSame([15204, 22320, 27840], $c['child_credits']);
     }
@@ -34,6 +35,7 @@ final class TaxConstantsTest extends TestCase
         self::assertSame(0.50, $c['health_assessment_pct']);
         self::assertSame(235044, $c['social_min_base_main']);    // 40 % × 48 967 × 12
         self::assertSame(64644, $c['social_min_base_secondary']);
+        self::assertSame(117521, $c['social_secondary_participation_threshold']); // rozhodná částka vedlejší SVČ 2026 (ČSSZ)
         self::assertSame(293802, $c['health_min_base']);         // 50 % × 48 967 × 12
     }
 
