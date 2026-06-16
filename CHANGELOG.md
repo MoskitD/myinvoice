@@ -5,7 +5,11 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [4.33.0] — 2026-06-16
+
+### Added
+
+- **Daňový optimalizátor: hlídání limitu sociálního pojištění u vedlejší činnosti.** Při zaškrtnuté **vedlejší činnosti** přibude v teploměru běžícího roku řádek, který hlídá blízkost k **rozhodné částce pro povinnou účast na důchodovém (sociálním) pojištění** (2025 = 111 736 Kč, 2026 = 117 521 Kč dle ČSSZ). Pod ní se z vedlejší SVČ sociální pojištění neplatí. Na rozdíl od ostatních limitů se měří proti **projektovanému zisku** (příjmy − výdaje dle paušálu / skutečných výdajů), ne proti příjmu — ukáže, zda zisk zůstane pod limitem, nebo limit překročíš a v kterém měsíci. Částku lze pro daný rok upravit v *Číselníky → Daňové konstanty*. Bez nové DB migrace. (#134)
 
 ### Fixed
 
