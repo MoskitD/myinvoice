@@ -221,6 +221,7 @@ final class CrmAggregationService
      *   prev_12m: array<int, array<string,mixed>>,
      *   prev_year_full: array<int, array<string,mixed>>,
      *   prev_year_ytd: array<int, array<string,mixed>>,
+     *   current_month_pipeline: array<int, array<string,mixed>>,
      *   currencies: list<string>
      * }
      */
@@ -250,8 +251,94 @@ final class CrmAggregationService
             'prev_12m'       => $this->aggregateRange($supplierId, $payer, $d($first24), $d($first12)),
             'prev_year_full' => $this->aggregateRange($supplierId, $payer, $d($prevYearStart), $d($yearStart)),
             'prev_year_ytd'  => $this->aggregateRange($supplierId, $payer, $d($prevYearStart), $d($prevYearYtdEnd)),
+            'current_month_pipeline' => $this->currentMonthPipeline($supplierId, $payer, $d($firstThisMonth), $d($firstNextMonth)),
             'currencies'     => $this->listCurrencies($supplierId),
         ];
+    }
+
+    /**
+     * Dopředné („pipeline") tržby aktuálního měsíce, které JEŠTĚ NEjsou v ostrých tržbách
+     * ({@see aggregateRange}) — doplňují dlaždici „Tržby tento měsíc" o očekávané příjmy:
+     *   - koncepty:           vydané faktury ve stavu draft (invoice/credit_note/tax_document)
+     *   - nespárované proformy: otevřené proformy bez navazujícího ostrého daňového dokladu
+     *                           (stejná „unmatched" sémantika jako {@see receivableDocTypeSql})
+     *
+     * Net pro plátce, gross pro neplátce (shodně s revenue). Per měna + CZK přepočet
+     * (revenue_czk pole) pro agregaci „Vše" na klientovi.
+     *
+     * @return list<array{currency:string, draft_revenue:float, draft_revenue_czk:float,
+     *                    draft_count:int, proforma_revenue:float, proforma_revenue_czk:float,
+     *                    proforma_count:int}>
+     */
+    private function currentMonthPipeline(int $supplierId, bool $payer, string $from, string $toExcl): array
+    {
+        $pdo = $this->db->pdo();
+        $zero = static fn (): array => ['dg' => 0.0, 'dn' => 0.0, 'dgc' => 0.0, 'dnc' => 0.0, 'dc' => 0,
+                                        'pg' => 0.0, 'pn' => 0.0, 'pgc' => 0.0, 'pnc' => 0.0, 'pc' => 0];
+        $acc = [];
+
+        // Koncepty — vydané faktury ve stavu draft (proformy řeší druhý dotaz zvlášť).
+        $draft = $pdo->prepare(
+            "SELECT cur.code AS currency,
+                    SUM(COALESCE(i.total_with_vat,0))    AS g, SUM(COALESCE(i.total_without_vat,0)) AS n,
+                    SUM(COALESCE(i.total_with_vat,0)    * COALESCE(IF(cur.code='CZK',1,i.exchange_rate),1)) AS gc,
+                    SUM(COALESCE(i.total_without_vat,0) * COALESCE(IF(cur.code='CZK',1,i.exchange_rate),1)) AS nc,
+                    COUNT(*) AS cnt
+               FROM invoices i JOIN currencies cur ON cur.id = i.currency_id
+              WHERE i.supplier_id = ?
+                AND " . self::REV_DATE . " >= ? AND " . self::REV_DATE . " < ?
+                AND i.status = 'draft'
+                AND i.invoice_type IN " . self::REV_TYPES . "
+           GROUP BY cur.code"
+        );
+        $draft->execute([$supplierId, $from, $toExcl]);
+        foreach ($draft->fetchAll(\PDO::FETCH_ASSOC) as $r) {
+            $c = (string) $r['currency'];
+            $acc[$c] = $acc[$c] ?? $zero();
+            $acc[$c]['dg'] = (float) $r['g'];  $acc[$c]['dn'] = (float) $r['n'];
+            $acc[$c]['dgc'] = (float) $r['gc']; $acc[$c]['dnc'] = (float) $r['nc'];
+            $acc[$c]['dc'] = (int) $r['cnt'];
+        }
+
+        // Nespárované proformy — otevřené (issued/sent/reminded) bez dceřiného ostrého dokladu.
+        $prof = $pdo->prepare(
+            "SELECT cur.code AS currency,
+                    SUM(COALESCE(i.total_with_vat,0))    AS g, SUM(COALESCE(i.total_without_vat,0)) AS n,
+                    SUM(COALESCE(i.total_with_vat,0)    * COALESCE(IF(cur.code='CZK',1,i.exchange_rate),1)) AS gc,
+                    SUM(COALESCE(i.total_without_vat,0) * COALESCE(IF(cur.code='CZK',1,i.exchange_rate),1)) AS nc,
+                    COUNT(*) AS cnt
+               FROM invoices i JOIN currencies cur ON cur.id = i.currency_id
+              WHERE i.supplier_id = ?
+                AND " . self::REV_DATE . " >= ? AND " . self::REV_DATE . " < ?
+                AND i.invoice_type = 'proforma'
+                AND i.status IN ('issued', 'sent', 'reminded')
+                AND NOT EXISTS (SELECT 1 FROM invoices ch
+                                 WHERE ch.parent_invoice_id = i.id AND ch.invoice_type = 'invoice')
+           GROUP BY cur.code"
+        );
+        $prof->execute([$supplierId, $from, $toExcl]);
+        foreach ($prof->fetchAll(\PDO::FETCH_ASSOC) as $r) {
+            $c = (string) $r['currency'];
+            $acc[$c] = $acc[$c] ?? $zero();
+            $acc[$c]['pg'] = (float) $r['g'];  $acc[$c]['pn'] = (float) $r['n'];
+            $acc[$c]['pgc'] = (float) $r['gc']; $acc[$c]['pnc'] = (float) $r['nc'];
+            $acc[$c]['pc'] = (int) $r['cnt'];
+        }
+
+        ksort($acc);
+        $out = [];
+        foreach ($acc as $c => $a) {
+            $out[] = [
+                'currency'             => (string) $c,
+                'draft_revenue'        => $payer ? $a['dn']  : $a['dg'],
+                'draft_revenue_czk'    => $payer ? $a['dnc'] : $a['dgc'],
+                'draft_count'          => $a['dc'],
+                'proforma_revenue'     => $payer ? $a['pn']  : $a['pg'],
+                'proforma_revenue_czk' => $payer ? $a['pnc'] : $a['pgc'],
+                'proforma_count'       => $a['pc'],
+            ];
+        }
+        return $out;
     }
 
     /**

@@ -3225,7 +3225,11 @@
       "yoy_12m_hint": "Klouzavých 12 měsíců vs. předchozích 12 měsíců",
       "yoy_ytd_hint": "Od začátku roku vs. stejné období loni",
       "invoices": "fakt.",
-      "purchases": "přij. fakt."
+      "purchases": "přij. fakt.",
+      "drafts": "koncepty",
+      "proformas": "proformy",
+      "expected": "očekávané",
+      "pipeline_hint": "Očekávané tržby tohoto měsíce = vystavené + koncepty (vydané faktury) + nespárované proformy. Zatím nevystavené složky se nezapočítávají do trendu ani do tržeb za období."
     },
     "compare": {
       "title": "Srovnání období",

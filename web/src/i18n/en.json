@@ -3225,7 +3225,11 @@
       "yoy_12m_hint": "Trailing 12 months vs. previous 12 months",
       "yoy_ytd_hint": "Year-to-date vs. same period last year",
       "invoices": "inv.",
-      "purchases": "exp."
+      "purchases": "exp.",
+      "drafts": "drafts",
+      "proformas": "proformas",
+      "expected": "expected",
+      "pipeline_hint": "Expected revenue this month = issued + drafts (sales invoices) + unmatched proformas. The not-yet-issued parts are excluded from the trend and from period revenue."
     },
     "compare": {
       "title": "Period comparison",
