@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.59.1] - 2026-10-14
+
+### Fixed
+
+- **Import vydaných faktur z ISDOC zachovává zaokrouhlení.** Import zahazoval `PayableRoundingAmount`, takže částka k úhradě zůstala haléřová a zaokrouhlená úhrada klienta vyšla jako nedoplatek. Zaokrouhlení se nově převezme do `invoices.rounding` přímo z `PayableRoundingAmount`, a když chybí, z rozdílu nenulového `PayableAmount` proti položkám (jen u dokladu bez odečtených záloh). Do DPH ani položek nevstupuje. (#289, díky @janvalentik)
+- **Výzva „Pošli upomínky“ se shoduje se seznamem faktur po splatnosti.** Výzva na dashboardu započítávala i faktury splatné dnes, zatímco seznam je ve výchozím nastavení ukazuje až následující den. Nově používá stejnou hranici splatnosti (`OverduePolicy`) jako seznam, včetně volitelného zahrnutí dnešní splatnosti. (#287, díky @blondak)
+- **PDF záloha obsahuje originály a přílohy faktur.** `cron-backup-pdf` dřív bral jen soubory `.pdf` a vynechával strojové originály přijatých faktur (ISDOC, ISDOCX, XML, JSON), přílohy vystavených faktur jiných typů i převzatá PDF z `invoices-imported`. Archiv `*-pdf-*.zip` je nově obsahuje a používá pevné cesty `storage/...` i při externím úložišti nebo nastaveném `MYINVOICE_DATA_DIR`. Soubory mimo zdrojový adresář (symlinky) se přeskočí. (#288, díky @blondak)
+
+### Documentation
+
+- Manuál popisuje obsah záloh a doporučené časy `cron-backup-pdf` a `cron-backup-documents`, a hranici splatnosti u výzvy k upomínkám.
+
 ## [4.59.0] - 2026-10-02
 
 ### Added
