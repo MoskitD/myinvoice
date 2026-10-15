@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.59.2] - 2026-10-15
+
+### Fixed
+
+- **PDF výpis Raiffeisenbank s vkladem hotovosti a poplatkem na jednom řádku.** Vklad hotovosti na pobočce tiskne RB na jeden řádek se sloupcem Poplatek. Parser bral jen poslední částku, poplatek zahodil a kontrola součtů pak odmítla celý výpis. Nově vznikne vklad v plné výši a samostatný pohyb poplatku, takže součty sedí na zůstatek výpisu.
+
 ## [4.59.1] - 2026-10-14
 
 ### Fixed
