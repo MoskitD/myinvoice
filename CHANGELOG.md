@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.59.3] - 2026-10-21
+
+### Security
+
+- **Docker image na PHP 8.5.12.** Obraz se staví na PHP 8.5.12 s bezpečnostními opravami jádra PHP (GHSA-w8hw-w9fx-j79w, GHSA-6wmf-4rv5-p3rp) a řadou oprav use-after-free. Doporučujeme aktualizovat.
+
+### Fixed
+
+- **Sestavení Docker image nezávisí na pecl.php.net.** Rozšíření redis se sestavuje ze zdrojů phpredis 6.3.0 s připnutou verzí, takže výpadek PECL už nezastaví publikaci image.
+
 ## [4.59.2] - 2026-10-15
 
 ### Fixed
